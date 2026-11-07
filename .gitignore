@@ -1,0 +1,23 @@
+# Node / Expo
+frontend/node_modules/
+frontend/.expo/
+frontend/dist/
+frontend/.expo-shared/
+frontend/npm-debug.log*
+frontend/yarn-error.log*
+
+# Python
+backend/.venv/
+backend/__pycache__/
+backend/**/*.pyc
+backend/.pytest_cache/
+backend/.env
+
+# Environment files
+.env
+.env.*
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
