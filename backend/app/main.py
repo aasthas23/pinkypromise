@@ -82,7 +82,15 @@ async def get_session(user_id: str) -> dict[str, str]:
 
 @app.post("/transcripts/analyze", response_model=AnalysisResult)
 async def analyze_transcript(payload: TranscriptAnalysisRequest) -> AnalysisResult:
-    result = evaluate_transcript(payload.user_id, payload.transcript, payload.scam_type)
+    result = evaluate_transcript(
+        user_id=payload.user_id,
+        transcript=payload.transcript,
+        scam_type=payload.scam_type,
+        employee_name=payload.employee_name or "Alex Rivera",
+        department=payload.department or "Customer Support",
+        scenario=payload.scenario or "Fake T-Mobile Support Rep",
+        duration_seconds=payload.duration_seconds or 185,
+    )
     return AnalysisResult(
         user_id=result["user_id"],
         scam_type=result["scam_type"],
@@ -97,6 +105,11 @@ async def analyze_transcript(payload: TranscriptAnalysisRequest) -> AnalysisResu
             for item in result["actionable_tasks"]
         ],
         csv_rows=result["csv_rows"],
+        outcome=result.get("outcome", "resisted"),
+        employee_name=result.get("employee_name", "Alex Rivera"),
+        department=result.get("department", "Customer Support"),
+        scenario=result.get("scenario", "Fake T-Mobile Support Rep"),
+        duration_seconds=result.get("duration_seconds", 185),
     )
 
 
