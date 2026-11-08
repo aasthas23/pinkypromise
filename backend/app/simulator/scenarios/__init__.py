@@ -8,7 +8,14 @@ from ..models import RecordingClip, Scenario
 
 _DIR = Path(__file__).parent
 # Display order: real-recording scenarios first, then fully scripted ones.
-_ORDER = ['amazon-suspicious-order', 'ssa-suspension', 'account-security-sim-swap']
+_ORDER = [
+    'amazon-suspicious-order',
+    'ssa-suspension',
+    'account-security-sim-swap',
+    # T-Mobile practice calls used by the web app (beginner, intermediate; advanced is the SIM-swap one).
+    'tmobile-loyalty-discount',
+    'tmobile-support-rep',
+]
 
 
 @lru_cache(maxsize=1)

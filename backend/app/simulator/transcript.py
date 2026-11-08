@@ -1,7 +1,7 @@
 """Plain-text transcript of a finished simulated call.
 
-Built on request from the in-memory session; the server never writes it to
-disk. The app saves the returned text as a .txt file on the user's device.
+The service saves one .txt per finished call under backend/data/call_transcripts/
+(see SimulatorService), next to the project's other transcript data.
 """
 
 import textwrap
@@ -65,8 +65,10 @@ def _section(title: str) -> list[str]:
 
 
 def transcript_filename(scenario: Scenario, s: SimulatorSession, tz_offset_min: int | None = None) -> str:
-    stamp = _local(s.started_at_ms, tz_offset_min).strftime('%Y%m%d-%H%M%S')
-    return f'scam-coach_{scenario.id}_{stamp}.txt'
+    """snake_case like the project's data files (e.g. data/fake_transcript.txt)."""
+    stamp = _local(s.started_at_ms, tz_offset_min).strftime('%Y%m%d_%H%M%S')
+    short_id = s.session_id[-6:]
+    return f'{scenario.id.replace("-", "_")}_{stamp}_{short_id}_transcript.txt'
 
 
 def format_transcript(
@@ -115,6 +117,20 @@ def format_transcript(
         else:
             out += _wrap(stamp, f'({t.text.rstrip(".")})')
     out.append(f'[{_clock((s.ended_at_ms or t0) - t0)}] (Call ended.)')
+
+    if debrief.learning_outcomes:
+        out += _section('Learning outcomes')
+        mark = {True: '[x] Achieved', False: '[ ] Practice next', None: '[-] Not practiced'}
+        for o in debrief.learning_outcomes:
+            out += _wrap(f'{mark[o.achieved]}: ', o.title)
+            out += _wrap('        ', o.detail)
+
+    if debrief.cues and debrief.cues.encountered:
+        c = debrief.cues
+        out += _section('Red flags you spotted')
+        out.append(f'You flagged {len(c.spotted)} of {len(c.encountered)} tactics the caller used.')
+        for f in c.encountered:
+            out += _wrap(f'{"[x]" if f in c.spotted else "[ ]"} ', scenario.red_flags[f].title)
 
     if debrief.timeline:
         out += _section('What you did')

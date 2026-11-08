@@ -35,6 +35,7 @@ SimulatorEventType = Literal[
     'simulated_payment_made',
     'keypad_pressed',
     'free_text_unclear',
+    'red_flag_spotted',
     'hint_requested',
     'call_ended',
 ]
@@ -175,6 +176,8 @@ class TranscriptEntry(CamelModel):
     source: Literal['recording', 'model', 'scripted'] | None = None
     # When the entry happened (epoch ms), for timestamps in the saved transcript.
     at_ms: int | None = None
+    # Red flag ids the caller showed in this step (set on the step's last caller line).
+    flags: list[str] = []
 
 
 SessionStatus = Literal['ringing', 'active', 'ended']
@@ -194,6 +197,8 @@ class SimulatorSession(CamelModel):
     red_flags_seen: list[str] = []
     visited_node_ids: list[str] = []
     recording_ids: dict[str, str] = {}
+    # The user's timezone (JS getTimezoneOffset minutes), for times in the saved transcript.
+    tz_offset_min: int | None = None
     # Consecutive unclear free-text replies at the current node.
     unclear_streak: int = 0
     seq: int = 0

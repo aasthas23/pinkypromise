@@ -1,0 +1,432 @@
+{
+  "id": "tmobile-loyalty-discount",
+  "title": "Suspicious loyalty discount",
+  "description": "A friendly caller says your T-Mobile account qualifies for half off your bill. It sounds great, if you can “confirm it’s you” first.",
+  "difficulty": "beginner",
+  "estimatedMinutes": 2,
+  "learningObjectives": [
+    "Recognize a too-good-to-be-true offer as a hook",
+    "Check offers yourself in the T-Mobile app instead of through the caller",
+    "Never read a one-time code to a caller, even to “claim” a reward"
+  ],
+  "caller": {
+    "displayName": "T-Mobile Rewards",
+    "displayNumber": "(844) 555-0119",
+    "agentName": "Ashley",
+    "voice": {
+      "pitch": 1.15,
+      "rate": 1.05
+    }
+  },
+  "provenance": "Modeled on real “discount for existing customers” robocalls in the FTC-collected Robocall Audio Dataset, adapted to T-Mobile. The caller’s wording is written live by AI within fixed scenario steps. The caller, numbers and code are fictional.",
+  "startNodeId": "intro",
+  "nodes": {
+    "intro": {
+      "kind": "dialogue",
+      "id": "intro",
+      "phase": "intro",
+      "callerGoal": "As Ashley from the T-Mobile Loyalty Rewards team, warmly say their account qualifies for 50% off their bill for 12 months and ask for a minute to apply it.",
+      "callerLines": [
+        "Hi there, this is Ashley calling from T-Mobile’s Loyalty Rewards team. How are you doing today?",
+        "Because you’ve been with us for so long, your account qualifies for fifty percent off your monthly bill for the next twelve months. Do you have a quick minute so I can apply it?"
+      ],
+      "redFlags": [
+        "unsolicited_contact",
+        "too_good_offer"
+      ],
+      "hint": "A great offer you didn’t ask for. Where could you check whether it’s real, without this caller?",
+      "options": [
+        {
+          "id": "intro_interested",
+          "label": "Wow, really? Sure, how does it work?",
+          "behavior": "neutral",
+          "next": "urgency",
+          "rationale": "Getting excited about a deal is natural. Scammers count on that excitement to move you along before you check."
+        },
+        {
+          "id": "intro_challenge",
+          "label": "How did you get my number? Which account is this about?",
+          "behavior": "challenge",
+          "next": "proof",
+          "rationale": "Asking how they know you, before agreeing to anything, puts you in control of the call.",
+          "events": [
+            "caller_challenged"
+          ]
+        },
+        {
+          "id": "intro_verify",
+          "label": "If it’s real, it’ll be in my T-Mobile app. I’ll check there.",
+          "behavior": "verify",
+          "next": "discourage",
+          "rationale": "Checking offers in the official app, which you open yourself, is the most reliable way to tell.",
+          "events": [
+            "independent_verification_requested"
+          ]
+        }
+      ],
+      "acceptsSpeech": true
+    },
+    "proof": {
+      "kind": "dialogue",
+      "id": "proof",
+      "phase": "authority_claim",
+      "callerGoal": "Reassure them it’s official: they’re flagged as a loyal customer, the account ending in 2290, and this is a real loyalty promotion.",
+      "callerLines": [
+        "You’re in our system as one of our loyal customers, the account ending in 2290.",
+        "This is an official loyalty promotion, I’m calling from the rewards department directly."
+      ],
+      "redFlags": [
+        "authority_claim",
+        "partial_info_as_proof"
+      ],
+      "hint": "Does knowing four digits of an account prove someone works at T-Mobile?",
+      "options": [
+        {
+          "id": "proof_accept",
+          "label": "Okay, that sounds legit.",
+          "behavior": "neutral",
+          "next": "urgency",
+          "rationale": "Last-four digits often come from data breaches. They don’t prove who is calling."
+        },
+        {
+          "id": "proof_verify",
+          "label": "Real promotions show up in my account. I’ll check the app myself.",
+          "behavior": "verify",
+          "next": "discourage",
+          "rationale": "Right: partial details aren’t proof. Checking through a channel you choose is.",
+          "events": [
+            "independent_verification_requested"
+          ]
+        },
+        {
+          "id": "proof_refuse",
+          "label": "No thanks, I’m not interested.",
+          "behavior": "refuse",
+          "next": "end_refused",
+          "rationale": "Saying no to an unexpected offer is always allowed. A real discount will still be there when you check."
+        }
+      ],
+      "acceptsSpeech": true
+    },
+    "discourage": {
+      "kind": "dialogue",
+      "id": "discourage",
+      "phase": "urgency",
+      "callerGoal": "Talk them out of checking: this offer is phone-only, won’t show in the app, and you can only hold it until the end of your shift today.",
+      "callerLines": [
+        "Oh, this one’s actually phone-only, it won’t show up in the app.",
+        "And I can only hold it for you until the end of my shift today. After that it goes to the next customer."
+      ],
+      "redFlags": [
+        "discouraging_verification",
+        "artificial_urgency"
+      ],
+      "hint": "Why would a real T-Mobile offer be hidden from your own account?",
+      "options": [
+        {
+          "id": "disc_give_in",
+          "label": "Fine, let’s do it quickly then.",
+          "behavior": "neutral",
+          "next": "urgency",
+          "rationale": "The caller made checking sound like a lost opportunity. Talking you out of verifying is one of the strongest warning signs."
+        },
+        {
+          "id": "disc_hold_firm",
+          "label": "Then I’ll pass. If it’s real, T-Mobile can tell me through the app.",
+          "behavior": "verify",
+          "next": "end_verified",
+          "rationale": "Holding firm when a deal “expires today” is protective. Real offers survive a quick check.",
+          "events": [
+            "independent_verification_requested"
+          ]
+        }
+      ],
+      "acceptsSpeech": true
+    },
+    "urgency": {
+      "kind": "dialogue",
+      "id": "urgency",
+      "phase": "urgency",
+      "callerGoal": "Say that to lock in the discount you just need to confirm they’re the account holder: you’re texting a six-digit code now and they should read it back.",
+      "callerLines": [
+        "Great! To lock it in, I just need to confirm you’re the account holder.",
+        "I’m texting you a six-digit code right now. Just read it back to me and the discount is yours."
+      ],
+      "redFlags": [
+        "code_request",
+        "artificial_urgency"
+      ],
+      "hint": "Read the simulated text message. Who does it say to share the code with?",
+      "options": [
+        {
+          "id": "urg_disclose",
+          "label": "Okay, the code is 731 604.",
+          "behavior": "comply",
+          "next": "fee",
+          "rationale": "A one-time code proves you’re the account holder. Reading it to a caller can let them change your account or move your number.",
+          "events": [
+            "dummy_code_disclosed"
+          ]
+        },
+        {
+          "id": "urg_refuse",
+          "label": "The text says never to share this code. I won’t.",
+          "behavior": "refuse",
+          "next": "pressure",
+          "rationale": "Exactly right. The code’s own message says not to share it, and that includes callers who say they’re T-Mobile.",
+          "events": [
+            "sensitive_information_refused"
+          ]
+        },
+        {
+          "id": "urg_verify",
+          "label": "I’ll apply it myself through the T-Mobile app.",
+          "behavior": "verify",
+          "next": "pressure",
+          "rationale": "Turning the request into something you do yourself, in the official app, keeps you in control.",
+          "events": [
+            "independent_verification_requested"
+          ]
+        }
+      ],
+      "acceptsSpeech": true,
+      "sms": {
+        "sender": "T-Mobile (simulated)",
+        "body": "SIMULATION ONLY. T-Mobile: Your verification code is 731 604. Never share this code. T-Mobile will never call you and ask for it."
+      }
+    },
+    "pressure": {
+      "kind": "dialogue",
+      "id": "pressure",
+      "phase": "simulated_sensitive_request",
+      "callerGoal": "Pressure them gently but firmly: it’s just to confirm it’s them, it takes two seconds, and if you can’t verify, the discount goes to the next customer on your list.",
+      "callerLines": [
+        "It’s just so I know it’s really you, it takes two seconds.",
+        "If I can’t verify you now, I have to give the discount to the next customer on my list."
+      ],
+      "redFlags": [
+        "emotional_pressure",
+        "artificial_urgency",
+        "code_request"
+      ],
+      "hint": "Would a real discount disappear because you wouldn’t read out a security code?",
+      "options": [
+        {
+          "id": "pr_disclose",
+          "label": "Fine… it’s 731 604.",
+          "behavior": "comply",
+          "next": "fee",
+          "rationale": "Giving in under friendly pressure is very common, and it isn’t a personal failing. Noticing the pressure is what helps next time.",
+          "events": [
+            "dummy_code_disclosed"
+          ]
+        },
+        {
+          "id": "pr_refuse",
+          "label": "Then give it to them. I’m not sharing a code. Bye.",
+          "behavior": "refuse",
+          "next": "end_refused",
+          "rationale": "Refusing and ending the call protected your account.",
+          "events": [
+            "sensitive_information_refused"
+          ]
+        },
+        {
+          "id": "pr_verify",
+          "label": "I’m hanging up and checking with T-Mobile myself.",
+          "behavior": "verify",
+          "next": "end_verified",
+          "rationale": "You held firm and chose to check for yourself. That’s the safest way this call can end.",
+          "events": [
+            "independent_verification_requested"
+          ]
+        }
+      ],
+      "acceptsSpeech": true
+    },
+    "fee": {
+      "kind": "dialogue",
+      "id": "fee",
+      "phase": "simulated_sensitive_request",
+      "callerGoal": "Thank them, say they’re verified, then add the last step: a one-time $49 activation fee paid with a prepaid gift card, reading you the card number.",
+      "callerLines": [
+        "Perfect, you’re all verified! Just one last thing.",
+        "There’s a one-time forty-nine dollar activation fee. You can pay it with a prepaid gift card, just read me the number on the back."
+      ],
+      "redFlags": [
+        "gift_card_payment",
+        "escalating_requests"
+      ],
+      "hint": "Would T-Mobile ever ask for a fee by gift card?",
+      "options": [
+        {
+          "id": "fee_pay",
+          "label": "Okay. The card number is [simulated gift card number].",
+          "behavior": "comply",
+          "next": "end_exposed",
+          "rationale": "Money sent by gift card is very hard to recover. Any caller asking for a gift card payment is running a scam.",
+          "events": [
+            "simulated_payment_made"
+          ]
+        },
+        {
+          "id": "fee_refuse",
+          "label": "T-Mobile doesn’t take gift cards. I’m hanging up.",
+          "behavior": "refuse",
+          "next": "end_refused",
+          "rationale": "Exactly right. Spotting the gift card request and leaving is a real recovery, even after sharing the code.",
+          "events": [
+            "sensitive_information_refused"
+          ]
+        }
+      ],
+      "acceptsSpeech": true
+    },
+    "end_verified": {
+      "kind": "ending",
+      "id": "end_verified",
+      "phase": "resolution",
+      "endingId": "verified",
+      "callerGoal": "React with mild disappointment as they hang up to check.",
+      "callerLines": [
+        "Oh, okay… well, you’ll miss out then."
+      ],
+      "endingIdIfDisclosed": "recovered"
+    },
+    "end_refused": {
+      "kind": "ending",
+      "id": "end_refused",
+      "phase": "resolution",
+      "endingId": "refused",
+      "callerGoal": "End the call with a last attempt to make them feel they’re losing out.",
+      "callerLines": [
+        "Your loss. This offer won’t come around again."
+      ],
+      "endingIdIfDisclosed": "recovered"
+    },
+    "end_exposed": {
+      "kind": "ending",
+      "id": "end_exposed",
+      "phase": "resolution",
+      "endingId": "exposed",
+      "callerGoal": "Wrap up cheerfully as if the discount is applied.",
+      "callerLines": [
+        "You’re all set! You’ll see the discount on your next bill. Thanks for being a loyal customer!"
+      ]
+    }
+  },
+  "redFlags": {
+    "unsolicited_contact": {
+      "id": "unsolicited_contact",
+      "title": "Unexpected call about your account",
+      "explanation": "You didn’t contact anyone. When a call about your account comes out of nowhere, treat it as unverified until you check."
+    },
+    "too_good_offer": {
+      "id": "too_good_offer",
+      "title": "Too-good-to-be-true offer",
+      "explanation": "Half off your bill for a year, just for picking up? Big surprise rewards are a classic hook to get you talking and lower your guard."
+    },
+    "authority_claim": {
+      "id": "authority_claim",
+      "title": "Claimed to be T-Mobile",
+      "explanation": "Saying “I’m with T-Mobile” or giving a badge number is easy. Anyone can say it, so a name or title alone proves nothing."
+    },
+    "partial_info_as_proof": {
+      "id": "partial_info_as_proof",
+      "title": "Partial details used as proof",
+      "explanation": "Last-four digits and similar details often leak in data breaches. Knowing them doesn’t make a caller legitimate."
+    },
+    "discouraging_verification": {
+      "id": "discouraging_verification",
+      "title": "Talking you out of checking",
+      "explanation": "The caller said checking the app or calling back wouldn’t work. A real T-Mobile employee doesn’t mind if you verify."
+    },
+    "artificial_urgency": {
+      "id": "artificial_urgency",
+      "title": "Countdown pressure",
+      "explanation": "“Only today” or “every minute counts” leaves no time to think or check. That rush is the point."
+    },
+    "code_request": {
+      "id": "code_request",
+      "title": "Asking for a one-time code",
+      "explanation": "One-time codes are for you to type in yourself, never to read to a caller. A request for one is a strong sign of account takeover."
+    },
+    "emotional_pressure": {
+      "id": "emotional_pressure",
+      "title": "Guilt and pressure",
+      "explanation": "“I’m trying to help you” or “it only takes two seconds” makes saying no feel rude. It’s a way to push past your hesitation."
+    },
+    "gift_card_payment": {
+      "id": "gift_card_payment",
+      "title": "Paying with a gift card",
+      "explanation": "Gift cards are for gifts. A caller who wants a fee or payment by gift card is running a scam, every time."
+    },
+    "escalating_requests": {
+      "id": "escalating_requests",
+      "title": "Escalating requests",
+      "explanation": "After getting one thing, the caller asked for more. Each “last step” builds on the trust you’ve already given."
+    }
+  },
+  "endings": {
+    "verified": {
+      "id": "verified",
+      "title": "You chose to verify independently",
+      "outcome": "protected",
+      "summary": "You ended the call to check with T-Mobile yourself, through the app or the number on your bill. Nothing was shared."
+    },
+    "refused": {
+      "id": "refused",
+      "title": "You refused and ended the call",
+      "outcome": "protected",
+      "summary": "You didn’t give the caller anything and you left the conversation."
+    },
+    "hung_up": {
+      "id": "hung_up",
+      "title": "You hung up",
+      "outcome": "protected",
+      "summary": "You ended the call before sharing anything."
+    },
+    "declined": {
+      "id": "declined",
+      "title": "You declined the call",
+      "outcome": "not_engaged",
+      "summary": "Not answering an unexpected call is a reasonable habit. Try answering next time to practice the conversation."
+    },
+    "recovered": {
+      "id": "recovered",
+      "title": "You stopped partway through",
+      "outcome": "recovered",
+      "summary": "You shared some simulated information, then recognized the scam and ended the call before giving more."
+    },
+    "hung_up_after_disclosure": {
+      "id": "hung_up_after_disclosure",
+      "title": "You hung up after sharing something",
+      "outcome": "recovered",
+      "summary": "You ended the call, but only after sharing simulated information. Leaving was the right call. In real life, follow up with T-Mobile quickly."
+    },
+    "exposed": {
+      "id": "exposed",
+      "title": "The caller got what they asked for",
+      "outcome": "exposed",
+      "summary": "In a real call, the scammer could use the code to take over your account, and the gift card money would be gone. This was only practice. The point is to spot the hook next time."
+    }
+  },
+  "controlEndings": {
+    "declined": "declined",
+    "hungUpSafe": "hung_up",
+    "hungUpAfterDisclosure": "hung_up_after_disclosure"
+  },
+  "saferAlternatives": [
+    "Hang up and contact T-Mobile yourself through the T-Mobile app or the number on your bill. Never use a number or link the caller gives you.",
+    "Ask the caller for their Pinky Promise code and check it in the app. A real T-Mobile employee can give you one; a scammer can’t pass the check.",
+    "Never read out a one-time code or your account PIN. They’re for you to type in yourself.",
+    "No real company asks you to pay a fee with a gift card."
+  ],
+  "recoverySteps": [
+    "Contact T-Mobile right away through the app or the number on your bill. Say you may have shared a code or account details.",
+    "Change your account PIN or passcode, and ask about turning on number-transfer (port-out) protection.",
+    "Watch for a sudden loss of signal. If your phone shows “No service” unexpectedly, contact T-Mobile from another phone.",
+    "If you paid with a gift card, contact the card company right away using the number on the card. Keep the receipt. Report it at ReportFraud.ftc.gov."
+  ],
+  "recordingPools": []
+}

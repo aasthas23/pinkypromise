@@ -12,6 +12,8 @@ backend/__pycache__/
 backend/**/*.pyc
 backend/.pytest_cache/
 backend/.env
+# Saved call transcripts (generated at runtime; don't commit transcripts)
+backend/data/call_transcripts/
 
 # Environment files
 .env

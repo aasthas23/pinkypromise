@@ -19,6 +19,12 @@ export interface VerificationSession {
   status: VerifyStatus;
 }
 
+export interface TranscriptLine {
+  who: "caller" | "you" | "system";
+  text: string;
+  flag?: string;
+}
+
 export interface SimResult {
   source?: "practice" | "biweekly";
   difficulty: Difficulty;
@@ -27,6 +33,20 @@ export interface SimResult {
   watchOut: string[];
   tactics: string[];
   completedAt: number;
+  /** Set for calls run by the live simulator backend (absent for the scripted demo). */
+  live?: boolean;
+  outcomeTitle?: string;
+  outcomeSummary?: string;
+  /** What was actually said on this call. The scripted demo uses the scenario script instead. */
+  transcript?: TranscriptLine[];
+  /** True when the caller's wording was written by AI. */
+  aiCaller?: boolean;
+  /** The explicit learning outcomes for this call and whether each was achieved. */
+  outcomes?: { title: string; achieved: boolean | null; detail: string }[];
+  /** Fraud-cue identification: titles of the tactics the user flagged, and the ones they missed. */
+  cues?: { spotted: string[]; missed: string[] };
+  /** The call's saved .txt transcript on the practice server (backend/data/call_transcripts/). */
+  transcriptFile?: string;
 }
 
 export interface DemoState {

@@ -1,6 +1,6 @@
 """HTTP routes for the Scam Coach simulator."""
 
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import PlainTextResponse
 from pydantic import Field
 
@@ -25,6 +25,8 @@ def _svc(request: Request) -> SimulatorService:
 class StartRequest(CamelModel):
     scenario_id: str
     previous_session_id: str | None = None
+    # Minutes behind UTC, as JS Date.getTimezoneOffset() reports, so saved transcript times match.
+    tz_offset_min: int | None = Field(default=None, ge=-14 * 60, le=14 * 60)
 
 
 class ChooseRequest(CamelModel):
@@ -72,7 +74,7 @@ def list_scenarios(request: Request):
 @router.post('/sessions', response_model=SessionView, response_model_by_alias=True)
 def start_session(body: StartRequest, request: Request):
     try:
-        return _svc(request).start(body.scenario_id, body.previous_session_id)
+        return _svc(request).start(body.scenario_id, body.previous_session_id, body.tz_offset_min)
     except SessionNotFound:
         raise HTTPException(404, 'Unknown scenario')
 
@@ -102,6 +104,12 @@ async def hang_up(sid: str, request: Request):
     return await _run(_svc(request).hang_up(sid))
 
 
+@router.post('/sessions/{sid}/spot', response_model=SessionView, response_model_by_alias=True)
+async def spot(sid: str, request: Request):
+    """Record that the user flagged the current step as a red flag (scored only in the debrief)."""
+    return await _run(_svc(request).spot(sid))
+
+
 @router.post('/sessions/{sid}/hint', response_model=HintResponse, response_model_by_alias=True)
 async def hint(sid: str, request: Request):
     async def go():
@@ -120,21 +128,15 @@ async def debrief(sid: str, request: Request, previous: str | None = None):
 
 
 @router.get('/sessions/{sid}/transcript.txt', response_class=PlainTextResponse)
-async def transcript(
-    sid: str,
-    request: Request,
-    # Minutes behind UTC, as JS Date.getTimezoneOffset() reports, so times match the user's clock.
-    tz_offset_min: int | None = Query(default=None, alias='tzOffsetMin', ge=-14 * 60, le=14 * 60),
-):
+async def transcript(sid: str, request: Request):
+    """The finished call's saved transcript (backend/data/call_transcripts/), as plain text."""
+
     async def go():
-        filename, text = _svc(request).transcript(sid, tz_offset_min)
+        filename, text = _svc(request).transcript(sid)
         return PlainTextResponse(
             text,
             media_type='text/plain; charset=utf-8',
-            headers={
-                'Content-Disposition': f'attachment; filename="{filename}"',
-                'Cache-Control': 'no-store',
-            },
+            headers={'Content-Disposition': f'inline; filename="{filename}"', 'Cache-Control': 'no-store'},
         )
 
     return await _run(go())

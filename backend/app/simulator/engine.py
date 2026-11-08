@@ -114,6 +114,7 @@ def _enter(
     s.visited_node_ids.append(node_id)
     s.unclear_streak = 0
 
+    first_new = len(s.transcript)
     if node.recording_pool:
         clip = get_clip(scenario, s, node.recording_pool)
         if clip:
@@ -126,6 +127,11 @@ def _enter(
 
     if node.sms:
         _say(s, 'sms', node.sms.body, now, sender=node.sms.sender)
+
+    # Tag the step's last caller line with the tactics it used, for highlighting.
+    caller_lines_added = [t for t in s.transcript[first_new:] if t.speaker == 'caller']
+    if caller_lines_added and node.red_flags:
+        caller_lines_added[-1].flags = list(node.red_flags)
 
     for flag in node.red_flags:
         if flag not in s.red_flags_seen:
@@ -276,6 +282,20 @@ def request_hint(
     s = _copy(s)
     _event(s, 'hint_requested', now, phase=node.phase, node_id=node.id)
     return s, node.hint
+
+
+def spot_red_flag(scenario: Scenario, s: SimulatorSession, now: int) -> SimulatorSession:
+    """The user flagged the current step as suspicious (fraud-cue identification).
+
+    Recorded against the step whose caller lines are on screen. No feedback is
+    given until the debrief, so the call doesn't hand out answers mid-way.
+    """
+    if s.status != 'active':
+        return s
+    node = get_node(scenario, s.current_node_id)
+    s = _copy(s)
+    _event(s, 'red_flag_spotted', now, phase=node.phase, node_id=node.id)
+    return s
 
 
 def validate_scenario(scenario: Scenario) -> list[str]:
