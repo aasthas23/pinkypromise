@@ -1,5 +1,7 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -10,31 +12,42 @@ import {
   Radar,
   RadarChart,
   ResponsiveContainer,
+  Scatter,
+  ScatterChart,
   Tooltip,
   XAxis,
   YAxis,
+  ZAxis,
 } from "recharts";
 import {
   AlertTriangle,
+  Activity,
   ArrowUpDown,
-  CheckCircle2,
   ChevronDown,
   ChevronUp,
   Download,
-  FileText,
   Gauge,
   PhoneCall,
-  Plus,
-  RefreshCw,
+  Clock3,
+  BrainCircuit,
   ShieldAlert,
-  Sparkles,
+  Target,
+  TrendingDown,
+  TrendingUp,
+  Users,
+  Search,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { SimulationRecord } from "@/lib/csv-analytics";
-import { aggregateByTactic, aggregateByScenario, computeKPIs, recordsToCsv } from "@/lib/csv-analytics";
-import { addOrUpdateCsvRecord, resetDemo } from "@/lib/store";
+import {
+  aggregateByTactic,
+  aggregateByScenario,
+  computeAdvancedAnalytics,
+  computeKPIs,
+  recordsToCsv,
+} from "@/lib/csv-analytics";
 
 /* ── Style tokens (match AnalystCharts conventions) ────────────────── */
 const tones = [
@@ -97,46 +110,6 @@ function formatDuration(seconds: number) {
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
-/* ── Sample transcripts for quick testing ──────────────────────────── */
-const SAMPLE_TRANSCRIPTS: Record<
-  string,
-  { label: string; text: string; scamType: string; scenario: string; defaultOutcome: "resisted" | "compromised" }
-> = {
-  resisted: {
-    label: "Alex Resisted (Verification Check)",
-    scamType: "tmobile_phishing",
-    scenario: "Fake T-Mobile Support Rep",
-    defaultOutcome: "resisted",
-    text: `Caller: This is T-Mobile fraud prevention. We detected an unauthorized attempt to access your SIM card.
-We sent a 6-digit confirmation code to your phone. Read it back immediately or your phone will be disconnected.
-Customer: I never share codes over an inbound call. If this is legitimate, I'll log in to the official T-Mobile app or call the 611 customer care number myself.
-Caller: You don't have time! This is urgent! Your line will be suspended right now.
-Customer: I am hanging up now to verify through the official app. Have a good day.`,
-  },
-  compromised: {
-    label: "Alex Compromised (Disclosed OTP under pressure)",
-    scamType: "tmobile_phishing",
-    scenario: "Fake T-Mobile Support Rep",
-    defaultOutcome: "compromised",
-    text: `Caller: Urgent notice from T-Mobile Account Security. Suspicious login from overseas.
-Caller: To keep your service active and block the hacker, please confirm your 6-digit code right now.
-Customer: Wait, I received a text saying not to share this code with anyone.
-Caller: That is standard automated text. I am an official representative from fraud control. If you don't read it in 30 seconds your account will be locked.
-Customer: Okay, the code is 849201. Please fix it.
-Caller: Code confirmed. Account secured.`,
-  },
-  rewards: {
-    label: "Rewards Scam (Special Loyalty Discount)",
-    scamType: "rewards_scam",
-    scenario: "Suspicious Discount Offer",
-    defaultOutcome: "resisted",
-    text: `Caller: Congratulations! As a valued T-Mobile subscriber, you've qualified for a $50/mo plan discount and a free gift card.
-Caller: To apply this promotional loyalty credit, I just need your account PIN and last four digits of your SSN.
-Customer: That sounds too good to be true. T-Mobile doesn't ask for my PIN to apply discounts.
-Customer: I'll check my plan options in my online account. Goodbye.`,
-  },
-};
-
 /* ── Sort helpers for the roster table ─────────────────────────────── */
 type SortField =
   | "employeeName"
@@ -167,20 +140,24 @@ export function EmployerDashboard({ records }: { records: SimulationRecord[] }) 
   const kpis = useMemo(() => computeKPIs(records), [records]);
   const tacticData = useMemo(() => aggregateByTactic(records), [records]);
   const scenarioData = useMemo(() => aggregateByScenario(records), [records]);
+  const advanced = useMemo(() => computeAdvancedAnalytics(records), [records]);
 
   /* ── Sortable roster state ─────────────────────────────────────── */
   const [sortField, setSortField] = useState<SortField>("vulnerabilityScore");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
   const sorted = useMemo(() => sortRecords(records, sortField, sortDir), [records, sortField, sortDir]);
+  const [explorerSearch, setExplorerSearch] = useState("");
+  const [explorerOutcome, setExplorerOutcome] = useState<"all" | "compromised" | "resisted">("all");
+  const exploredRecords = useMemo(() => {
+    const query = explorerSearch.trim().toLowerCase();
+    return sorted.filter((record) => {
+      const matchesOutcome = explorerOutcome === "all" || record.outcome === explorerOutcome;
+      const searchable = `${record.employeeName} ${record.department} ${record.scenario} ${record.scamType} ${record.employeeSummary}`.toLowerCase();
+      return matchesOutcome && (!query || searchable.includes(query));
+    });
+  }, [sorted, explorerSearch, explorerOutcome]);
 
-  /* ── Interactive Transcript Ingestion State ─────────────────────── */
-  const [showIngest, setShowIngest] = useState(false);
-  const [selectedSampleKey, setSelectedSampleKey] = useState("resisted");
-  const [customText, setCustomText] = useState(SAMPLE_TRANSCRIPTS.resisted.text);
-  const [targetEmployee, setTargetEmployee] = useState("Alex Rivera");
-  const [targetDept, setTargetDept] = useState("Customer Support");
-  const [analyzing, setAnalyzing] = useState(false);
-  const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const [activeSection, setActiveSection] = useState<"command" | "threats" | "people" | "coaching" | "explorer">("command");
 
   function handleSort(field: SortField) {
     if (field === sortField) {
@@ -224,257 +201,212 @@ export function EmployerDashboard({ records }: { records: SimulationRecord[] }) 
     document.body.removeChild(link);
   }
 
-  /* ── Handle Analyze Transcript ─────────────────────────────────── */
-  async function handleAnalyzeTranscript() {
-    if (!customText.trim()) return;
-    setAnalyzing(true);
-    setStatusMsg(null);
-
-    try {
-      const sample = SAMPLE_TRANSCRIPTS[selectedSampleKey];
-      const payload = {
-        user_id: targetEmployee === "Alex Rivera" ? "fake-user-001" : `fake-user-${Date.now().toString().slice(-3)}`,
-        transcript: customText,
-        scam_type: sample?.scamType || "tmobile_phishing",
-        employee_name: targetEmployee,
-        department: targetDept,
-        scenario: sample?.scenario || "Fake T-Mobile Support Rep",
-        duration_seconds: 180,
-      };
-
-      let evaluatedScore = 46;
-      let evaluatedOutcome: "resisted" | "compromised" = "resisted";
-      let evaluatedRedFlags = ["urgency", "authority"];
-      let summaryText = "";
-
-      // Try calling backend API first (which routes to Ollama or heuristic fallback)
-      try {
-        const resp = await fetch("http://localhost:8000/transcripts/analyze", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-        });
-        if (resp.ok) {
-          const data = await resp.json();
-          evaluatedScore = data.vulnerability_score;
-          evaluatedOutcome = data.outcome as "resisted" | "compromised";
-          evaluatedRedFlags = data.red_flags;
-          summaryText = data.employee_summary;
-        } else {
-          throw new Error("Backend response not ok");
-        }
-      } catch {
-        // Fallback: client-side evaluation matching the Ollama heuristic
-        const lower = customText.toLowerCase();
-        const piiHit = lower.includes("code is") || lower.includes("849201") || lower.includes("pin");
-        const urgencyHit = lower.includes("urgent") || lower.includes("immediately") || lower.includes("right now");
-        const refusalHit = lower.includes("never share") || lower.includes("hanging up") || lower.includes("official app");
-
-        if (piiHit && !refusalHit) {
-          evaluatedScore = 88;
-          evaluatedOutcome = "compromised";
-          evaluatedRedFlags = ["urgency", "authority", "pii_request"];
-          summaryText = `${targetEmployee} exposed sensitive credentials under urgency pressure. Immediate retraining required.`;
-        } else if (refusalHit) {
-          evaluatedScore = 26;
-          evaluatedOutcome = "resisted";
-          evaluatedRedFlags = urgencyHit ? ["urgency", "authority"] : ["authority"];
-          summaryText = `${targetEmployee} resisted caller manipulation and verified identity through official channels.`;
-        } else {
-          evaluatedScore = 46;
-          evaluatedOutcome = "resisted";
-          evaluatedRedFlags = ["urgency", "authority"];
-          summaryText = `${targetEmployee} hesitated during the call but refrained from sharing verification codes.`;
-        }
-      }
-
-      const newRecord: SimulationRecord = {
-        userId: payload.user_id,
-        timestamp: new Date().toISOString(),
-        scamType: payload.scam_type,
-        redFlags: evaluatedRedFlags,
-        vulnerabilityScore: evaluatedScore,
-        employeeSummary: summaryText,
-        employeeName: targetEmployee,
-        department: targetDept,
-        scenario: payload.scenario,
-        durationSeconds: 175,
-        outcome: evaluatedOutcome,
-      };
-
-      addOrUpdateCsvRecord(newRecord);
-      setStatusMsg(
-        `✓ Analyzed & synced to CSV! Score: ${evaluatedScore} (${evaluatedOutcome.toUpperCase()}). Employee roster, home page, and customer progress updated.`
-      );
-    } finally {
-      setAnalyzing(false);
-    }
-  }
-
   return (
     <div className="space-y-6">
-      {/* ═══ ACTIONS BAR: Ingest Transcript, Export, Reset ═════════ */}
-      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card p-4 shadow-soft">
-        <div className="flex items-center gap-2">
-          <FileText className="size-5 text-primary" />
+      <div className="flex justify-end">
+        <Button variant="outline" size="sm" onClick={handleExportCsv}>
+          <Download className="size-4" />
+          Export CSV
+        </Button>
+      </div>
+
+      <nav className="overflow-x-auto rounded-2xl border bg-card p-2 shadow-soft">
+        <div className="flex min-w-max gap-1">
+          {[
+            ["command", "01 Command Center"],
+            ["threats", "02 Threat Intelligence"],
+            ["people", "03 People & Teams"],
+            ["coaching", "04 Coaching Center"],
+            ["explorer", "05 Simulation Explorer"],
+          ].map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => {
+                setActiveSection(id as typeof activeSection);
+                document.getElementById(`analytics-${id}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}
+              className={cn(
+                "rounded-xl px-4 py-2.5 text-sm font-bold transition-colors",
+                activeSection === id ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground",
+              )}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+      </nav>
+
+      <section id="analytics-command" className="scroll-mt-24 rounded-2xl border bg-gradient-to-br from-pink/45 via-card to-mint/35 p-5 shadow-soft sm:p-6">
+        <div className="flex flex-col gap-5">
           <div>
-            <h3 className="font-bold">Call Transcript Pipeline</h3>
-            <p className="text-xs text-muted-foreground">
-              Ollama Llama-3.1 inference generates structured CSV analytics
+            <div className="flex items-center gap-2 text-primary-deep">
+              <BrainCircuit className="size-5" />
+              <h2 className="text-lg font-black">Penny&apos;s Intelligence Brief</h2>
+            </div>
+            <p className="mt-1 max-w-xl text-sm text-muted-foreground">
+              Automatic, evidence-based findings generated from the synchronized simulation records.
+            </p>
+          </div>
+          <Badge className="w-fit bg-primary text-primary-foreground">
+            {advanced.compromiseRate}% fleet compromise rate
+          </Badge>
+        </div>
+        <div className="mt-5 grid grid-cols-1 gap-3">
+          <div className="rounded-xl border bg-card/90 p-4">
+            <p className="text-xs font-black uppercase text-primary">Sensitive data risk</p>
+            <p className="mt-2 text-2xl font-black">{advanced.piiCompromiseRate}%</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {advanced.piiCompromises} of {advanced.piiSessions} calls containing PII requests compromised.
+            </p>
+          </div>
+          <div className="rounded-xl border bg-card/90 p-4">
+            <p className="text-xs font-black uppercase text-primary">Conversation behavior</p>
+            <p className="mt-2 text-2xl font-black">{formatDuration(advanced.compromisedDuration)}</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              average compromised duration; resisted calls averaged {formatDuration(advanced.resistedDuration)}.
+            </p>
+          </div>
+          <div className="rounded-xl border bg-card/90 p-4">
+            <p className="text-xs font-black uppercase text-primary">Priority target</p>
+            <p className="mt-2 text-lg font-black">{advanced.employees[0]?.employeeName ?? "No employees yet"}</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {advanced.employees[0]
+                ? `${advanced.employees[0].latestScore}/100 latest risk with ${advanced.employees[0].compromiseRate}% compromise rate.`
+                : "Complete a simulation to generate coaching priorities."}
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant={showIngest ? "hero" : "soft"}
-            size="sm"
-            onClick={() => setShowIngest(!showIngest)}
-          >
-            <Sparkles className="size-4" />
-            {showIngest ? "Close Transcript AI" : "Analyze New Transcript"}
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleExportCsv}>
-            <Download className="size-4" />
-            Export CSV
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              resetDemo();
-              setStatusMsg("Reset CSV records to default baseline.");
-            }}
-          >
-            <RefreshCw className="size-4" />
-            Reset
-          </Button>
-        </div>
-      </div>
-
-      {/* ═══ EXPANDABLE TRANSCRIPT INGESTION PANEL ══════════════════ */}
-      {showIngest && (
-        <section className="rounded-2xl border-2 border-primary/20 bg-pink/40 p-5 shadow-soft">
-          <div className="flex items-center gap-2 font-black text-primary-deep">
-            <Sparkles className="size-5" />
-            <h3>Ollama Call Transcript Analyzer & CSV Updater</h3>
-          </div>
-          <p className="mt-1 text-xs text-muted-foreground">
-            Feed any phone transcript (.txt) into the scoring pipeline. Updates the fleet CSV and synchronizes
-            with Alex Rivera's customer progress check and home page metrics in real-time.
-          </p>
-
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div>
-              <label className="text-xs font-bold text-muted-foreground">Target Employee</label>
-              <select
-                className="mt-1 w-full rounded-lg border bg-card px-3 py-2 text-sm font-semibold"
-                value={targetEmployee}
-                onChange={(e) => setTargetEmployee(e.target.value)}
-              >
-                <option value="Alex Rivera">Alex Rivera (Customer Support / Demo User)</option>
-                <option value="Maria Chen">Maria Chen (Billing)</option>
-                <option value="James O'Connor">James O'Connor (Technical Support)</option>
-                <option value="Priya Natarajan">Priya Natarajan (Customer Support)</option>
-                <option value="Dorothy Williams">Dorothy Williams (Billing)</option>
-                <option value="Marcus Johnson">Marcus Johnson (Technical Support)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="text-xs font-bold text-muted-foreground">Quick Preset Transcript</label>
-              <select
-                className="mt-1 w-full rounded-lg border bg-card px-3 py-2 text-sm font-semibold"
-                value={selectedSampleKey}
-                onChange={(e) => {
-                  setSelectedSampleKey(e.target.value);
-                  const sample = SAMPLE_TRANSCRIPTS[e.target.value];
-                  if (sample) setCustomText(sample.text);
-                }}
-              >
-                {Object.entries(SAMPLE_TRANSCRIPTS).map(([key, item]) => (
-                  <option key={key} value={key}>
-                    {item.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="text-xs font-bold text-muted-foreground">Department</label>
-              <input
-                className="mt-1 w-full rounded-lg border bg-card px-3 py-2 text-sm font-semibold"
-                value={targetDept}
-                onChange={(e) => setTargetDept(e.target.value)}
-              />
-            </div>
-          </div>
-
-          <div className="mt-3">
-            <label className="text-xs font-bold text-muted-foreground">
-              Call Transcript (.txt text)
-            </label>
-            <textarea
-              className="mt-1 h-32 w-full rounded-xl border bg-card p-3 font-mono text-xs leading-relaxed"
-              value={customText}
-              onChange={(e) => setCustomText(e.target.value)}
-              placeholder="Paste raw conversation lines here..."
-            />
-          </div>
-
-          <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-            <Button
-              variant="hero"
-              disabled={analyzing || !customText.trim()}
-              onClick={handleAnalyzeTranscript}
-            >
-              {analyzing ? <RefreshCw className="size-4 animate-spin" /> : <Sparkles className="size-4" />}
-              {analyzing ? "Running Ollama AI Analysis..." : "Analyze Transcript & Update CSV"}
-            </Button>
-            <span className="text-xs text-muted-foreground">
-              Calls backend Ollama LLM endpoint or automatic heuristic fallback.
-            </span>
-          </div>
-
-          {statusMsg && (
-            <div className="mt-3 flex items-center gap-2 rounded-xl bg-mint px-4 py-3 text-sm font-bold text-mint-foreground">
-              <CheckCircle2 className="size-5 shrink-0" />
-              <span>{statusMsg}</span>
-            </div>
-          )}
-        </section>
-      )}
+      </section>
 
       {/* ═══ TOP ROW: KPI Cards ═══════════════════════════════════ */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        {/* Total Simulations */}
-        <div className="rounded-xl border p-4 shadow-soft bg-primary text-primary-foreground sm:p-5">
-          <PhoneCall className="size-5 text-primary-foreground" />
+      <div className="grid grid-cols-1 gap-4">
+        <div className="rounded-xl border bg-primary p-5 shadow-soft text-primary-foreground">
+          <PhoneCall className="size-5" />
           <p className="mt-3 text-4xl font-black">{kpis.totalSimulations}</p>
-          <p className="text-sm font-bold opacity-70">Total Simulations Run</p>
+          <p className="text-sm font-bold opacity-70">Total simulations</p>
+          <p className="mt-2 text-xs opacity-75">{advanced.employees.length} employees assessed</p>
         </div>
-
-        {/* Average Fleet Vulnerability Score */}
-        <div
-          className={cn(
-            "rounded-xl border p-4 shadow-soft sm:p-5",
-            kpiColor(kpis.avgVulnerability),
-          )}
-        >
+        <div className={cn("rounded-xl border p-5 shadow-soft", kpiColor(kpis.avgVulnerability))}>
           <Gauge className="size-5" />
           <p className="mt-3 text-4xl font-black">{kpis.avgVulnerability}</p>
-          <p className="text-sm font-bold opacity-70">Avg. Fleet Vulnerability</p>
+          <p className="text-sm font-bold opacity-70">Average vulnerability</p>
+          <p className="mt-2 text-xs opacity-75">{advanced.resistedRate}% resistance rate</p>
         </div>
-
-        {/* Critical Compromises */}
-        <div className="rounded-xl border p-4 shadow-soft bg-peach text-peach-foreground sm:p-5">
+        <div className="rounded-xl border bg-peach p-5 shadow-soft text-peach-foreground">
           <AlertTriangle className="size-5" />
-          <p className="mt-3 text-4xl font-black">{kpis.criticalCompromises}</p>
-          <p className="text-sm font-bold opacity-70">Critical Compromises (PII)</p>
+          <p className="mt-3 text-4xl font-black">{advanced.compromiseRate}%</p>
+          <p className="text-sm font-bold opacity-70">Compromise rate</p>
+          <p className="mt-2 text-xs opacity-75">{kpis.criticalCompromises} critical PII compromises</p>
+        </div>
+        <div className="rounded-xl border bg-mint p-5 shadow-soft text-mint-foreground">
+          <Clock3 className="size-5" />
+          <p className="mt-3 text-4xl font-black">{formatDuration(advanced.averageDuration)}</p>
+          <p className="text-sm font-bold opacity-70">Average call duration</p>
+          <p className="mt-2 text-xs opacity-75">{advanced.piiExposureRate}% involved PII exposure</p>
+        </div>
+        <div className="rounded-xl border p-5 shadow-soft">
+          <Target className="size-5 text-primary" />
+          <p className="mt-3 text-4xl font-black text-primary-deep">{advanced.highRiskEmployees}</p>
+          <p className="text-sm font-bold text-muted-foreground">High-risk employees</p>
+          <p className="mt-2 text-xs text-muted-foreground">{advanced.moderateRiskEmployees} moderate · {advanced.lowRiskEmployees} low</p>
+        </div>
+        <div className="rounded-xl border bg-pink/40 p-5 shadow-soft">
+          <Activity className="size-5 text-primary-deep" />
+          <p className="mt-3 text-4xl font-black text-primary-deep">{advanced.resistedRate}%</p>
+          <p className="text-sm font-bold text-primary-deep/70">Overall resistance</p>
+          <p className="mt-2 text-xs text-muted-foreground">Updates with every new call</p>
         </div>
       </div>
 
+      <section id="analytics-threats" className="scroll-mt-24 space-y-6">
+        <div className="grid grid-cols-1 gap-6">
+          <section className="chart-surface border-t-4 border-t-primary p-4 sm:p-6">
+            <div className="mb-5">
+              <h2 className="text-xl font-black">Scam tactic effectiveness</h2>
+              <p className="text-sm text-muted-foreground">Observed compromise rate whenever each tactic appeared</p>
+            </div>
+            <div className="space-y-3">
+              {advanced.tactics.map((tactic) => (
+                <div key={tactic.tactic}>
+                  <div className="mb-1 flex items-center justify-between gap-4 text-sm">
+                    <span className="font-bold capitalize">{tactic.label}</span>
+                    <span className="text-muted-foreground">{tactic.compromiseRate}% · {tactic.compromised}/{tactic.occurrences} calls</span>
+                  </div>
+                  <div className="h-2.5 overflow-hidden rounded-full bg-muted">
+                    <div className="h-full rounded-full bg-primary" style={{ width: `${tactic.compromiseRate}%` }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="chart-surface border-t-4 border-t-peach-foreground p-4 sm:p-6">
+            <div className="mb-5">
+              <h2 className="text-xl font-black">Conversation duration vs. score</h2>
+              <p className="text-sm text-muted-foreground">One dot per simulation; association is not proof of causation</p>
+            </div>
+            <div className="h-64">
+              <ResponsiveContainer width="100%" height="100%">
+                <ScatterChart margin={{ top: 8, right: 12, bottom: 0, left: -18 }}>
+                  <CartesianGrid stroke="var(--border)" strokeDasharray="3 5" />
+                  <XAxis type="number" dataKey="duration" name="Duration" unit=" sec" axisLine={false} tickLine={false} tick={tick} />
+                  <YAxis type="number" dataKey="score" name="Vulnerability" domain={[0, 100]} axisLine={false} tickLine={false} tick={tick} />
+                  <ZAxis range={[70, 70]} />
+                  <Tooltip cursor={{ strokeDasharray: "3 3" }} contentStyle={tip} />
+                  <Scatter
+                    name="Simulation"
+                    data={records.map((record) => ({
+                      duration: record.durationSeconds,
+                      score: record.vulnerabilityScore,
+                      outcome: record.outcome,
+                      employee: record.employeeName,
+                    }))}
+                    fill="var(--primary)"
+                  />
+                </ScatterChart>
+              </ResponsiveContainer>
+            </div>
+          </section>
+        </div>
+
+        <section className="chart-surface overflow-hidden p-0">
+          <div className="p-5">
+            <h2 className="text-lg font-black">Department exposure heatmap</h2>
+            <p className="text-sm text-muted-foreground">Compromise rate when a tactic appeared in each department</p>
+          </div>
+          <div className="overflow-x-auto px-5 pb-5">
+            <div className="grid min-w-[760px] gap-2" style={{ gridTemplateColumns: `170px repeat(${advanced.tactics.length}, minmax(90px, 1fr))` }}>
+              <div />
+              {advanced.tactics.map((tactic) => (
+                <div key={tactic.tactic} className="text-center text-[11px] font-black text-muted-foreground">{tactic.label}</div>
+              ))}
+              {advanced.departments.map((department) => (
+                <Fragment key={department.department}>
+                  <div key={`${department.department}-label`} className="flex items-center text-sm font-bold">{department.department}</div>
+                  {advanced.tactics.map((tactic) => {
+                    const cell = advanced.heatmap.find((item) => item.department === department.department && item.tactic === tactic.label);
+                    const rate = cell?.compromiseRate ?? 0;
+                    return (
+                      <div
+                        key={`${department.department}-${tactic.tactic}`}
+                        title={cell ? `${cell.compromised}/${cell.occurrences} compromised · ${cell.avgScore}/100 avg score` : "No observations"}
+                        className="grid min-h-16 place-items-center rounded-xl border text-xs font-black"
+                        style={{ background: cell ? `color-mix(in srgb, var(--primary) ${Math.max(8, rate * 0.75)}%, var(--card))` : "var(--muted)" }}
+                      >
+                        {cell ? `${rate}%` : "—"}
+                      </div>
+                    );
+                  })}
+                </Fragment>
+              ))}
+            </div>
+          </div>
+        </section>
+      </section>
+
       {/* ═══ MIDDLE ROW: Charts ═══════════════════════════════════ */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 gap-6">
         {/* Radar Chart — Vulnerability by Tactic */}
         <section className="chart-surface border-t-4 border-t-primary p-4 sm:p-6">
           <div className="mb-5">
@@ -570,16 +502,162 @@ export function EmployerDashboard({ records }: { records: SimulationRecord[] }) 
         </section>
       </div>
 
+      {/* ═══ LIVE TREND AND COACHING INSIGHTS ════════════════════════ */}
+      <div id="analytics-coaching" className="scroll-mt-24 grid grid-cols-1 gap-6">
+        <section className="chart-surface border-t-4 border-t-primary p-4 sm:p-6">
+          <div className="mb-5 flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-xl font-black">Fleet vulnerability trend</h2>
+              <p className="text-sm text-muted-foreground">Each simulation plus the running fleet average</p>
+            </div>
+            <Badge variant="outline"><Activity className="mr-1 size-3" /> Live CSV</Badge>
+          </div>
+          <div className="h-72 w-full" role="img" aria-label="Simulation vulnerability trend chart">
+            <ResponsiveContainer width="100%" height="100%">
+              <AreaChart data={advanced.trend} margin={{ top: 5, right: 12, bottom: 0, left: -18 }}>
+                <defs>
+                  <linearGradient id="riskFill" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.28} />
+                    <stop offset="95%" stopColor="var(--primary)" stopOpacity={0.02} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid stroke="var(--border)" strokeDasharray="3 5" />
+                <XAxis dataKey="name" axisLine={false} tickLine={false} tick={tick} />
+                <YAxis domain={[0, 100]} axisLine={false} tickLine={false} tick={tick} />
+                <Tooltip contentStyle={tip} />
+                <Area type="monotone" dataKey="runningAverage" name="Fleet average" stroke="var(--primary-deep)" fill="url(#riskFill)" strokeWidth={3} />
+                <Area type="monotone" dataKey="score" name="Call score" stroke="var(--primary)" fillOpacity={0} strokeWidth={1.5} strokeDasharray="4 4" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        </section>
+
+        <section className="chart-surface border-t-4 border-t-peach-foreground p-4 sm:p-6">
+          <div className="mb-4 flex items-center gap-2">
+            <Target className="size-5 text-primary" />
+            <h2 className="text-lg font-black">Coaching priorities</h2>
+          </div>
+          {advanced.coachingPriorities.length > 0 ? (
+            <div className="space-y-3">
+              {advanced.coachingPriorities.map((priority, index) => (
+                <div key={priority} className="rounded-xl border bg-card p-3">
+                  <div className="flex gap-3">
+                    <span className="grid size-7 shrink-0 place-items-center rounded-full bg-pink text-xs font-black text-primary-deep">
+                      {index + 1}
+                    </span>
+                    <p className="text-sm font-semibold leading-relaxed">{priority}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Complete a simulation to generate coaching priorities.</p>
+          )}
+        </section>
+      </div>
+
+      {/* ═══ EMPLOYEE PERFORMANCE AND DEPARTMENT BREAKDOWN ════════ */}
+      <div id="analytics-people" className="scroll-mt-24 grid grid-cols-1 gap-6">
+        <section className="chart-surface overflow-hidden">
+          <div className="p-5">
+            <div className="flex items-center gap-2">
+              <Users className="size-5 text-primary" />
+              <h2 className="text-lg font-black">Employee performance ranking</h2>
+            </div>
+            <p className="mt-1 text-sm text-muted-foreground">Latest risk, call count, compromise rate, and improvement</p>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-muted text-left text-xs uppercase text-muted-foreground">
+                <tr>
+                  <th className="px-5 py-3">Employee</th>
+                  <th className="px-5 py-3">Calls</th>
+                  <th className="px-5 py-3">Latest</th>
+                  <th className="px-5 py-3">Compromise</th>
+                  <th className="px-5 py-3">Change</th>
+                </tr>
+              </thead>
+              <tbody>
+                {advanced.employees.slice(0, 8).map((employee) => (
+                  <tr key={employee.key} className="border-t">
+                    <td className="px-5 py-3">
+                      <div className="font-bold">{employee.employeeName}</div>
+                      <div className="text-xs text-muted-foreground">{employee.department}</div>
+                    </td>
+                    <td className="px-5 py-3 font-bold tabular-nums">{employee.calls}</td>
+                    <td className="px-5 py-3">{severityBadge(employee.latestScore)}</td>
+                    <td className="px-5 py-3 font-bold">{employee.compromiseRate}%</td>
+                    <td className="px-5 py-3">
+                      <span className={cn("inline-flex items-center gap-1 font-bold", employee.improvement >= 0 ? "text-emerald-700" : "text-destructive")}>
+                        {employee.improvement >= 0 ? <TrendingUp className="size-4" /> : <TrendingDown className="size-4" />}
+                        {Math.abs(employee.improvement)} pts
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="chart-surface border-t-4 border-t-mint-foreground p-5">
+          <h2 className="text-lg font-black">Department comparison</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Average score and compromise rate</p>
+          <div className="mt-4 space-y-4">
+            {advanced.departments.slice(0, 6).map((department) => (
+              <div key={department.department}>
+                <div className="mb-1 flex items-center justify-between text-sm">
+                  <span className="font-bold">{department.department}</span>
+                  <span className="text-muted-foreground">{department.averageScore}/100 · {department.compromiseRate}% compromised</span>
+                </div>
+                <div className="h-2 overflow-hidden rounded-full bg-muted">
+                  <div className="h-full rounded-full bg-primary" style={{ width: `${Math.min(100, department.averageScore)}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+
       {/* ═══ BOTTOM ROW: Employee Risk Roster ═════════════════════ */}
-      <section className="chart-surface overflow-hidden">
-        <div className="flex items-center justify-between p-5">
+      <section id="analytics-explorer" className="scroll-mt-24 chart-surface overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-3 p-5">
           <div className="flex items-center gap-2">
             <ShieldAlert className="size-5 text-primary" />
-            <h2 className="text-lg font-black">Employee Risk Roster</h2>
+            <div>
+              <h2 className="text-lg font-black">Simulation Explorer</h2>
+              <p className="text-xs text-muted-foreground">Search, filter, sort, and inspect call evidence</p>
+            </div>
           </div>
           <Badge variant="outline" className="text-xs">
-            {records.length} records in active CSV
+            {exploredRecords.length} of {records.length} records
           </Badge>
+        </div>
+        <div className="flex flex-col gap-2 border-y bg-muted/40 px-5 py-3">
+          <label className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={explorerSearch}
+              onChange={(event) => setExplorerSearch(event.target.value)}
+              className="w-full rounded-xl border bg-card py-2 pl-9 pr-3 text-sm font-semibold outline-none focus:ring-2 focus:ring-primary/30"
+              placeholder="Search employee, department, scenario, or summary"
+            />
+          </label>
+          <div className="flex gap-1 rounded-xl bg-card p-1">
+            {(["all", "compromised", "resisted"] as const).map((outcome) => (
+              <button
+                key={outcome}
+                type="button"
+                onClick={() => setExplorerOutcome(outcome)}
+                className={cn(
+                  "rounded-lg px-3 py-1.5 text-xs font-black capitalize",
+                  explorerOutcome === outcome ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
+                )}
+              >
+                {outcome}
+              </button>
+            ))}
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -607,7 +685,7 @@ export function EmployerDashboard({ records }: { records: SimulationRecord[] }) 
               </tr>
             </thead>
             <tbody>
-              {sorted.map((r) => {
+              {exploredRecords.map((r) => {
                 const isCurrentAlex = r.userId === "fake-user-001" || r.employeeName === "Alex Rivera";
                 return (
                   <tr

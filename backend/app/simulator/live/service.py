@@ -19,6 +19,8 @@ from collections import OrderedDict
 from collections.abc import AsyncIterator
 from pathlib import Path
 
+from app.services.analysis import evaluate_transcript
+
 from ..debrief import Debrief
 from ..safety import caller_line_ok, redact_user_text
 from ..service import BACKEND_ROOT, InvalidAction, SessionNotFound, transcript_dir
@@ -344,6 +346,27 @@ class LiveService:
             s.transcript_file = path.relative_to(BACKEND_ROOT).as_posix()
         except ValueError:
             s.transcript_file = path.as_posix()
+
+        transcript_text = "\n".join(
+            f"{'Caller' if entry.speaker == 'caller' else 'User'}: {entry.text}"
+            for entry in s.entries
+        )
+        duration_seconds = 185
+        if s.started_at_ms and s.ended_at_ms:
+            duration_seconds = max(30, round((s.ended_at_ms - s.started_at_ms) / 1000))
+        try:
+            evaluate_transcript(
+                user_id=f"live-{s.session_id}",
+                transcript=transcript_text,
+                scam_type="account_security" if s.difficulty == "advanced" else "tmobile_phishing",
+                employee_name="Alex Rivera",
+                department="Customer Support",
+                scenario=sc.title,
+                duration_seconds=duration_seconds,
+            )
+            log.info("Automatic transcript analysis completed and CSV row appended for live session %s", s.session_id)
+        except Exception as exc:
+            log.warning("Automatic transcript analysis failed for live session %s: %s", s.session_id, exc)
 
     async def debrief(self, sid: str) -> tuple[Debrief, LiveSessionView]:
         s = self._get(sid)

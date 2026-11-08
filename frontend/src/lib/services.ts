@@ -198,51 +198,6 @@ export const simulationService = {
     if (session.transcriptFile) result.transcriptFile = session.transcriptFile;
     if (debrief.provenance) result.provenance = debrief.provenance;
     recordResult(result);
-    const transcript = session.entries
-      .map((entry) => `${entry.speaker === "caller" ? session.title : entry.speaker === "user" ? "User" : "System"}: ${entry.text}`)
-      .join("\n");
-    await fetch(`${API_BASE_URL}/transcripts/analyze`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          user_id: "fake-user-001",
-          transcript,
-          scam_type: difficulty === "beginner" ? "rewards_scam" : difficulty === "advanced" ? "account_security" : "tmobile_phishing",
-          employee_name: "Alex Rivera",
-          department: "Customer Support",
-          scenario: session.title,
-          duration_seconds: Math.max(30, Math.round(debrief.duration_ms ? debrief.duration_ms / 1000 : session.entries.length * 12)),
-        }),
-      }).then(async (response) => {
-        if (!response.ok) return;
-        const analysis = await response.json() as {
-          timestamp?: string;
-          scam_type: string;
-          red_flags: string[];
-          vulnerability_score: number;
-          employee_summary: string;
-          outcome: "compromised" | "resisted";
-          employee_name?: string;
-          department?: string;
-          scenario?: string;
-          duration_seconds?: number;
-        };
-        addOrUpdateCsvRecord({
-          userId: "fake-user-001",
-          timestamp: analysis.timestamp ?? new Date().toISOString(),
-          scamType: analysis.scam_type,
-          redFlags: analysis.red_flags,
-          vulnerabilityScore: analysis.vulnerability_score,
-          employeeSummary: analysis.employee_summary,
-          employeeName: analysis.employee_name ?? "Alex Rivera",
-          department: analysis.department ?? "Customer Support",
-          scenario: analysis.scenario ?? session.title,
-          durationSeconds: analysis.duration_seconds ?? Math.max(30, Math.round(debrief.duration_ms ? debrief.duration_ms / 1000 : session.entries.length * 12)),
-          outcome: analysis.outcome,
-        });
-      }).catch(() => {
-        // Browser store and visible analytics still update if CSV persistence is unavailable.
-      });
     return result;
   },
 
@@ -280,6 +235,24 @@ export const simulationService = {
       scenario: sc.title,
       durationSeconds: 160,
       outcome: result.score >= 60 ? "compromised" : "resisted",
+    });
+    await fetch(`${API_BASE_URL}/transcripts/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_id: "fake-user-001",
+        transcript: [
+          `Caller: ${sc.title}`,
+          ...sc.script.map((line) => `${line.flag ? "Caller" : "User"}: ${line.text}`),
+        ].join("\n"),
+        scam_type: scamType,
+        employee_name: "Alex Rivera",
+        department: "Customer Support",
+        scenario: sc.title,
+        duration_seconds: 160,
+      }),
+    }).catch(() => {
+      // The browser record remains available while the backend CSV is unreachable.
     });
 
     return result;

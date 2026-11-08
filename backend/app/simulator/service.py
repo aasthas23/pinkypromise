@@ -12,6 +12,8 @@ import time
 from collections import OrderedDict
 from pathlib import Path
 
+from app.services.analysis import evaluate_transcript
+
 from . import engine
 from .debrief import Debrief, OutcomeDefinition, build_debrief, outcome_definitions
 from .dialogue import Dialogue, DialogueUnavailable, LineMode
@@ -168,6 +170,26 @@ class SimulatorService:
             log.warning('Could not save transcript for %s: %s', s.session_id, e)
             return None
         self._saved[s.session_id] = path
+
+        transcript_text = "\n".join(
+            f"{entry.speaker.title()}: {entry.text}" for entry in s.transcript
+        )
+        duration_seconds = 185
+        if s.started_at_ms and s.ended_at_ms:
+            duration_seconds = max(30, round((s.ended_at_ms - s.started_at_ms) / 1000))
+        try:
+            evaluate_transcript(
+                user_id=f"practice-{s.session_id}",
+                transcript=transcript_text,
+                scam_type=s.scenario_id,
+                employee_name="Alex Rivera",
+                department="Customer Support",
+                scenario=scenario.title,
+                duration_seconds=duration_seconds,
+            )
+            log.info("Automatic transcript analysis completed and CSV row appended for practice session %s", s.session_id)
+        except Exception as exc:
+            log.warning("Automatic transcript analysis failed for practice session %s: %s", s.session_id, exc)
         return path
 
     def _relative(self, path: Path) -> str:
