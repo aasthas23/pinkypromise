@@ -4,6 +4,7 @@ import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-nat
 
 import { Button } from '@/components/Button';
 import { DebriefTimeline } from '@/components/simulator/DebriefTimeline';
+import { TranscriptCard } from '@/components/simulator/TranscriptCard';
 import { ApiError, simulatorApi } from '@/features/simulator/api';
 import { useSimulatorStore } from '@/features/simulator/store';
 import type { Debrief, Outcome } from '@/features/simulator/types';
@@ -29,6 +30,9 @@ export default function DebriefScreen() {
     return { scenario, session, previousSessionId };
   });
   const start = useSimulatorStore((s) => s.start);
+  const transcript = useSimulatorStore((s) => (session ? s.transcripts[session.sessionId] : undefined));
+  const saveTranscript = useSimulatorStore((s) => s.saveTranscript);
+  const deleteSavedTranscript = useSimulatorStore((s) => s.deleteSavedTranscript);
   const [debrief, setDebrief] = useState<Debrief>();
   const [error, setError] = useState<string>();
 
@@ -87,6 +91,12 @@ export default function DebriefScreen() {
           <Text style={styles.meta}>Call length: {formatDuration(debrief.durationMs)} · Practice only, no real data used</Text>
         ) : null}
       </View>
+
+      <TranscriptCard
+        state={transcript}
+        onRetry={() => saveTranscript(session.sessionId)}
+        onDelete={() => deleteSavedTranscript(session.sessionId)}
+      />
 
       {diffs.length ? (
         <Section title="Compared with your last try">

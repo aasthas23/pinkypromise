@@ -88,16 +88,16 @@ def _event(s: SimulatorSession, type_: str, now: int, **details) -> None:
     )
 
 
-def _say(s: SimulatorSession, speaker: str, text: str, **extra) -> None:
+def _say(s: SimulatorSession, speaker: str, text: str, now: int, **extra) -> None:
     s.seq += 1
     s.transcript.append(
-        TranscriptEntry(id=f'{s.session_id}-t{s.seq}', speaker=speaker, text=text, **extra)
+        TranscriptEntry(id=f'{s.session_id}-t{s.seq}', speaker=speaker, text=text, at_ms=now, **extra)
     )
 
 
-def _add_caller_lines(s: SimulatorSession, lines: list[str], source: LineSource) -> None:
+def _add_caller_lines(s: SimulatorSession, lines: list[str], source: LineSource, now: int) -> None:
     for line in lines:
-        _say(s, 'caller', line, source=source)
+        _say(s, 'caller', line, now, source=source)
 
 
 def _enter(
@@ -117,15 +117,15 @@ def _enter(
     if node.recording_pool:
         clip = get_clip(scenario, s, node.recording_pool)
         if clip:
-            _say(s, 'caller', clip.transcript, clip_id=clip.id, source='recording')
+            _say(s, 'caller', clip.transcript, now, clip_id=clip.id, source='recording')
 
     if caller_lines is None:
-        _add_caller_lines(s, node.caller_lines, 'scripted')
+        _add_caller_lines(s, node.caller_lines, 'scripted', now)
     else:
-        _add_caller_lines(s, caller_lines, source)
+        _add_caller_lines(s, caller_lines, source, now)
 
     if node.sms:
-        _say(s, 'sms', node.sms.body, sender=node.sms.sender)
+        _say(s, 'sms', node.sms.body, now, sender=node.sms.sender)
 
     for flag in node.red_flags:
         if flag not in s.red_flags_seen:
@@ -226,9 +226,9 @@ def choose_response(
         _event(s, type_, now, phase=node.phase, node_id=node.id)
     if option.keypad:
         _event(s, 'keypad_pressed', now, phase=node.phase, node_id=node.id)
-        _say(s, 'system', f'You pressed {option.keypad}.')
+        _say(s, 'system', f'You pressed {option.keypad}.', now)
     else:
-        _say(s, 'user', user_text or option.label)
+        _say(s, 'user', user_text or option.label, now)
     _enter(scenario, s, option.next, now, caller_lines, source)
     return s
 
@@ -247,8 +247,8 @@ def unclear_response(
         return s
     s = _copy(s)
     _event(s, 'free_text_unclear', now, phase=node.phase, node_id=node.id)
-    _say(s, 'user', user_text)
-    _add_caller_lines(s, caller_lines, source)
+    _say(s, 'user', user_text, now)
+    _add_caller_lines(s, caller_lines, source, now)
     s.unclear_streak += 1
     return s
 
@@ -262,7 +262,7 @@ def hang_up(scenario: Scenario, s: SimulatorSession, now: int) -> SimulatorSessi
         if has_disclosed(s)
         else scenario.control_endings.hung_up_safe
     )
-    _say(s, 'system', 'You hung up.')
+    _say(s, 'system', 'You hung up.', now)
     _finish(s, ending, now, 'user_hang_up')
     return s
 

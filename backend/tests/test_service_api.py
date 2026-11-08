@@ -128,14 +128,14 @@ def test_model_writes_lines_and_classifies_free_text(model_api):
 
     fake.line_replies = [['Hey, it’s Jordan from account protection. Is this the account holder?']]
     v = http.post(f'/simulator/sessions/{sid}/answer').json()
-    assert v['transcript'][-1] == {
-        'id': v['transcript'][-1]['id'],
+    last = v['transcript'][-1]
+    assert {k: last[k] for k in ('speaker', 'text', 'clipId', 'source')} == {
         'speaker': 'caller',
         'text': 'Hey, it’s Jordan from account protection. Is this the account holder?',
-        'sender': None,
         'clipId': None,
         'source': 'model',
     }
+    assert isinstance(last['atMs'], int)
     assert v['freeTextAvailable'] is True
 
     fake.classify_replies = ['intro_challenge']

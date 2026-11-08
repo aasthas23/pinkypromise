@@ -24,7 +24,8 @@
     "plugins": [
       "expo-router",
       "expo-audio",
-      "expo-asset"
+      "expo-asset",
+      "expo-sharing"
     ],
     "scheme": "pinkypromise",
     "experiments": {

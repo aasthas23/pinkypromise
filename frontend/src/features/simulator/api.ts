@@ -32,7 +32,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(method: 'GET' | 'POST' | 'DELETE', path: string, body?: unknown): Promise<T> {
+async function send(method: 'GET' | 'POST' | 'DELETE', path: string, body?: unknown): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
   let res: Response;
@@ -62,7 +62,17 @@ async function request<T>(method: 'GET' | 'POST' | 'DELETE', path: string, body?
     }
     throw new ApiError(detail, res.status);
   }
+  return res;
+}
+
+async function request<T>(method: 'GET' | 'POST' | 'DELETE', path: string, body?: unknown): Promise<T> {
+  const res = await send(method, path, body);
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
+}
+
+/** Reads `filename="..."` from a Content-Disposition header. */
+export function filenameFromDisposition(header: string | null | undefined): string | undefined {
+  return header?.match(/filename="?([^";]+)"?/i)?.[1];
 }
 
 export const simulatorApi = {
@@ -76,6 +86,14 @@ export const simulatorApi = {
   say: (id: string, text: string) => request<SessionView>('POST', `/sessions/${id}/say`, { text }),
   hangUp: (id: string) => request<SessionView>('POST', `/sessions/${id}/hangup`),
   hint: (id: string) => request<{ session: SessionView; hint: string | null }>('POST', `/sessions/${id}/hint`),
+  /** Plain-text transcript of a finished call. Times use the given JS timezone offset. */
+  transcript: async (id: string, tzOffsetMin: number) => {
+    const res = await send('GET', `/sessions/${id}/transcript.txt?tzOffsetMin=${tzOffsetMin}`);
+    return {
+      text: await res.text(),
+      filename: filenameFromDisposition(res.headers.get('content-disposition')) ?? `scam-coach_${id}.txt`,
+    };
+  },
   debrief: (id: string, previous?: string) =>
     request<Debrief>('GET', `/sessions/${id}/debrief${previous ? `?previous=${encodeURIComponent(previous)}` : ''}`),
 };

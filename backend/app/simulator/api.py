@@ -1,6 +1,7 @@
 """HTTP routes for the Scam Coach simulator."""
 
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import PlainTextResponse
 from pydantic import Field
 
 from .debrief import Debrief
@@ -114,6 +115,27 @@ async def hint(sid: str, request: Request):
 async def debrief(sid: str, request: Request, previous: str | None = None):
     async def go():
         return _svc(request).debrief(sid, previous)
+
+    return await _run(go())
+
+
+@router.get('/sessions/{sid}/transcript.txt', response_class=PlainTextResponse)
+async def transcript(
+    sid: str,
+    request: Request,
+    # Minutes behind UTC, as JS Date.getTimezoneOffset() reports, so times match the user's clock.
+    tz_offset_min: int | None = Query(default=None, alias='tzOffsetMin', ge=-14 * 60, le=14 * 60),
+):
+    async def go():
+        filename, text = _svc(request).transcript(sid, tz_offset_min)
+        return PlainTextResponse(
+            text,
+            media_type='text/plain; charset=utf-8',
+            headers={
+                'Content-Disposition': f'attachment; filename="{filename}"',
+                'Cache-Control': 'no-store',
+            },
+        )
 
     return await _run(go())
 

@@ -1,12 +1,19 @@
 import { create } from 'zustand';
 
 import { ApiError, simulatorApi } from './api';
+import { deleteTranscript, saveCallTranscript, type SavedTranscript } from './transcripts';
 import type { ScenarioSummary, SessionView, SimulatorStatus } from './types';
 
 /**
  * Client state for the simulator. The backend is the source of truth for the
  * call; this store only holds the latest view of it plus UI concerns.
  */
+export type TranscriptState =
+  | { status: 'saving' }
+  | { status: 'saved'; file: SavedTranscript }
+  | { status: 'deleted'; name: string }
+  | { status: 'error'; message: string };
+
 type SimulatorState = {
   scenarios?: ScenarioSummary[];
   status?: SimulatorStatus;
@@ -24,6 +31,8 @@ type SimulatorState = {
   /** Last finished session per scenario, for retry comparisons and fresh recordings. */
   lastEnded: Record<string, string>;
   attempts: number;
+  /** .txt transcript saved at the end of each call, by session id. */
+  transcripts: Record<string, TranscriptState>;
 
   loadScenarios: () => Promise<void>;
   start: (scenarioId: string) => Promise<boolean>;
@@ -36,6 +45,8 @@ type SimulatorState = {
   dismissHint: () => void;
   clearError: () => void;
   setVoiceEnabled: (enabled: boolean) => void;
+  saveTranscript: (sessionId: string) => Promise<void>;
+  deleteSavedTranscript: (sessionId: string) => void;
 };
 
 const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Something went wrong.');
@@ -50,6 +61,8 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
       lastEnded: justEnded ? { ...lastEnded, [session.scenarioId]: session.sessionId } : lastEnded,
       attempts: justEnded ? attempts + 1 : attempts,
     });
+    // Every finished call gets a .txt transcript on the device.
+    if (justEnded) void get().saveTranscript(session.sessionId);
   };
 
   /** Runs one call action; returns false (and records the error) on failure. */
@@ -73,6 +86,7 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
     voiceEnabled: true,
     lastEnded: {},
     attempts: 0,
+    transcripts: {},
 
     loadScenarios: async () => {
       set({ loadError: undefined });
@@ -134,5 +148,27 @@ export const useSimulatorStore = create<SimulatorState>((set, get) => {
     dismissHint: () => set({ activeHint: undefined }),
     clearError: () => set({ error: undefined }),
     setVoiceEnabled: (voiceEnabled) => set({ voiceEnabled }),
+
+    saveTranscript: async (sessionId) => {
+      const put = (t: TranscriptState) => set({ transcripts: { ...get().transcripts, [sessionId]: t } });
+      if (get().transcripts[sessionId]?.status === 'saving') return;
+      put({ status: 'saving' });
+      try {
+        put({ status: 'saved', file: await saveCallTranscript(sessionId) });
+      } catch (e) {
+        put({ status: 'error', message: e instanceof Error && e.message ? e.message : 'Couldn’t save the transcript.' });
+      }
+    },
+
+    deleteSavedTranscript: (sessionId) => {
+      const t = get().transcripts[sessionId];
+      if (t?.status !== 'saved') return;
+      try {
+        deleteTranscript(t.file);
+        set({ transcripts: { ...get().transcripts, [sessionId]: { status: 'deleted', name: t.file.name } } });
+      } catch {
+        set({ transcripts: { ...get().transcripts, [sessionId]: { status: 'error', message: 'Couldn’t delete the transcript.' } } });
+      }
+    },
   };
 });

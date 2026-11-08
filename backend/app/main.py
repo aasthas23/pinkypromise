@@ -19,6 +19,7 @@ app.add_middleware(
     allow_origins=[o.strip() for o in os.environ.get('ALLOWED_ORIGINS', '*').split(',')],
     allow_methods=['GET', 'POST', 'DELETE'],
     allow_headers=['Content-Type'],
+    expose_headers=['Content-Disposition'],  # lets the app read the transcript filename
 )
 
 app.state.simulator = SimulatorService(create_dialogue())

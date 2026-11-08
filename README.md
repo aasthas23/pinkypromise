@@ -32,6 +32,9 @@ pytest                      # engine, safety and API tests (no real model calls)
 - **Privacy:** numbers and emails in typed replies are removed before they reach the model.
   Caller lines that contain phone numbers, URLs or emails are replaced with the scripted line.
   Sessions live only in memory and expire after 30 minutes.
+- **Transcripts:** when a call ends, the app saves a `.txt` transcript in its documents folder on the device
+  (`call-transcripts/`), or downloads it on web. The debrief can share or delete it.
+  The backend builds the text on request (`GET /simulator/sessions/{id}/transcript.txt`) and never writes it to disk.
 
 ## Frontend
 

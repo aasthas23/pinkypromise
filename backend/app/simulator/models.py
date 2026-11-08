@@ -173,6 +173,8 @@ class TranscriptEntry(CamelModel):
     clip_id: str | None = None
     # How the caller line was produced: real recording, model, or the scripted fallback.
     source: Literal['recording', 'model', 'scripted'] | None = None
+    # When the entry happened (epoch ms), for timestamps in the saved transcript.
+    at_ms: int | None = None
 
 
 SessionStatus = Literal['ringing', 'active', 'ended']

@@ -40,7 +40,7 @@ export default function ScenarioSelect() {
       <View style={styles.notice} accessible accessibilityLabel="About these practice calls">
         <Text style={styles.noticeTitle}>🛡️ These calls are simulated</Text>
         <Text style={styles.noticeBody}>
-          Nothing here is a real call, and nothing affects your real phone or account. Never type real personal information. Any number or email you type is removed before it’s used, and calls aren’t saved.
+          Nothing here is a real call, and nothing affects your real phone or account. Never type real personal information. Any number or email you type is removed before it’s used. At the end of each call, a .txt transcript is saved on this device (not on the server), and you can share or delete it from the debrief.
         </Text>
         {status ? (
           <Text style={styles.noticeBody}>

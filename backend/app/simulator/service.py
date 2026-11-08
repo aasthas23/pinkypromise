@@ -22,6 +22,7 @@ from .models import (
     TranscriptEntry,
 )
 from .safety import redact_user_text
+from .transcript import format_transcript, transcript_filename
 from .scenarios import get_scenario, load_scenarios
 
 SESSION_TTL_S = 30 * 60
@@ -311,3 +312,13 @@ class SimulatorService:
             if entry and entry[0].scenario_id == s.scenario_id and entry[0].status == 'ended':
                 previous = entry[0]
         return build_debrief(scenario, s, previous)
+
+    def transcript(self, sid: str, tz_offset_min: int | None = None) -> tuple[str, str]:
+        """(filename, text) for a finished call. Built on demand; never written to disk."""
+        scenario, s = self._get(sid)
+        if s.status != 'ended':
+            raise InvalidAction('the call has not ended yet')
+        return (
+            transcript_filename(scenario, s, tz_offset_min),
+            format_transcript(scenario, s, tz_offset_min),
+        )
