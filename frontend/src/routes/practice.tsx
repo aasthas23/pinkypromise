@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Mascot, MascotBubble } from "@/components/safe/Mascot";
 import { PageTitle } from "@/components/safe/AppShell";
 import { scenarios, type Difficulty } from "@/lib/mock-data";
-import { simulationService } from "@/lib/services";
+import { backendSimulatorService, simulationService } from "@/lib/services";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { useDemo } from "@/lib/store";
@@ -26,41 +26,97 @@ function Practice() {
   const [source, setSource] = useState<"practice" | "biweekly">("practice");
   const [pick, setPick] = useState<Difficulty>("intermediate");
   const [inCall, setInCall] = useState(false);
+  const [liveCallState, setLiveCallState] = useState<{ loading: boolean; sessionId: string | null; transcriptEntries: Array<{ speaker: string; text: string }>; transcriptText: string; error: string | null; }>({ loading: false, sessionId: null, transcriptEntries: [], transcriptText: "", error: null });
+
+  const handleLiveCall = async () => {
+    setLiveCallState({ loading: true, sessionId: null, transcriptEntries: [], transcriptText: "", error: null });
+    try {
+      const result = await backendSimulatorService.runTestCall("account-security-sim-swap");
+      setLiveCallState({ loading: false, sessionId: result.sessionId, transcriptEntries: result.transcriptEntries, transcriptText: result.transcriptText, error: null });
+    } catch (error) {
+      setLiveCallState({ loading: false, sessionId: null, transcriptEntries: [], transcriptText: "", error: error instanceof Error ? error.message : "Unable to start the live test call right now." });
+    }
+  };
+
   return (
     <div>
-      <PageTitle title="Practice calls" />
-      <MascotBubble mood="bounce" size={100}>Let's practice together! I'll help you spot the tricks.</MascotBubble>
-      <section className="mt-4 border-y border-mint-foreground/15 bg-mint/45 px-4 py-5">
-        <div className="flex items-center justify-between gap-4"><div><h2 className="text-xl font-black">Biweekly scam simulations</h2><p className="mt-1 text-sm text-muted-foreground">One call every two weeks · optional</p></div><Switch id="biweekly-calls" aria-label="Opt in to biweekly calls" checked={s.biweeklyOptIn} onCheckedChange={callPreferencesService.setBiweeklyOptIn} /></div>
-        <p className="mt-3 text-sm text-muted-foreground">With your permission, T-Mobile would send simulated scam calls and disclose that the call was fake at the end. Results help analysts understand which tactics need more practice. You can opt out anytime.</p>
-        <p role="status" className="mt-3 font-bold text-primary-deep">{s.biweeklyOptIn ? "You're opted in" : "You're opted out"}</p>
-        {s.biweeklyOptIn && nextDate && <p className="mt-1 text-sm text-muted-foreground">Next practice call: {new Date(nextDate).toLocaleDateString()}</p>}
-        {s.biweeklyOptIn && <Button variant="soft" className="mt-3" onClick={() => { setSource("biweekly"); setInCall(true); }}>Preview a biweekly call</Button>}
-        <p className="mt-3 text-xs text-muted-foreground">Practice preference only. No real calls are scheduled or placed.</p>
+      <PageTitle title="Practice" />
+      <MascotBubble mood="bounce" size={100}>Ready to practice?</MascotBubble>
+
+      <section className="mt-4 rounded-2xl border border-mint-foreground/15 bg-mint/45 p-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-primary-deep">Biweekly</p>
+            <h2 className="text-lg font-black">Practice reminders</h2>
+          </div>
+          <Switch id="biweekly-calls" aria-label="Opt in to biweekly calls" checked={s.biweeklyOptIn} onCheckedChange={callPreferencesService.setBiweeklyOptIn} />
+        </div>
+        {s.biweeklyOptIn && nextDate && <p className="mt-2 text-sm text-muted-foreground">Next: {new Date(nextDate).toLocaleDateString()}</p>}
+        {s.biweeklyOptIn && <Button variant="soft" className="mt-3" onClick={() => { setSource("biweekly"); setInCall(true); }}>Preview</Button>}
       </section>
-      <h2 className="mt-6 text-xl font-black">Start a practice call</h2>
-      <p className="mt-1 text-sm text-muted-foreground">Explore calls you might receive from someone claiming to be T-Mobile.</p>
-      <div role="radiogroup" aria-label="Difficulty" className="mt-6 space-y-3">
+
+      <section className="mt-5 rounded-3xl border border-pink/50 bg-card/95 p-3 shadow-soft">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-primary-deep">Live test</p>
+            <h2 className="mt-1 text-lg font-black">Quick call</h2>
+          </div>
+          <Button variant="hero" size="sm" onClick={handleLiveCall} disabled={liveCallState.loading}>
+            {liveCallState.loading ? "Calling…" : "Get call"}
+          </Button>
+        </div>
+
+        {liveCallState.error && <p className="mt-3 rounded-2xl border border-red-500/50 bg-red-50 px-3 py-2 text-sm text-red-700">{liveCallState.error}</p>}
+
+        {liveCallState.transcriptEntries.length > 0 && (
+          <div className="mt-4 rounded-2xl border border-border bg-muted/50 p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <p className="text-sm font-black text-primary-deep">Transcript</p>
+              {liveCallState.sessionId && <span className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">{liveCallState.sessionId}</span>}
+            </div>
+            <div className="max-h-52 space-y-2 overflow-y-auto pr-1">
+              {liveCallState.transcriptEntries.map((entry, index) => (
+                <p key={`${entry.speaker}-${index}`} className={cn("max-w-[85%] rounded-2xl px-3 py-2 text-sm", entry.speaker === "caller" ? "bg-card text-foreground" : "ml-auto bg-primary text-primary-foreground")}>
+                  <span className="font-black uppercase tracking-[0.08em]">{entry.speaker === "caller" ? "Caller" : entry.speaker === "user" ? "You" : entry.speaker}:</span> {entry.text}
+                </p>
+              ))}
+            </div>
+            {liveCallState.transcriptText && (
+              <pre className="mt-4 max-h-40 overflow-y-auto whitespace-pre-wrap rounded-2xl bg-ink p-3 text-xs text-ink-foreground">{liveCallState.transcriptText}</pre>
+            )}
+          </div>
+        )}
+      </section>
+
+      <div className="mt-6 flex items-center justify-between">
+        <h2 className="text-lg font-black">Choose a scenario</h2>
+        <span className="text-[10px] uppercase tracking-[0.14em] text-muted-foreground">{scenarios.length} options</span>
+      </div>
+
+      <div role="radiogroup" aria-label="Difficulty" className="mt-3 space-y-3">
         {scenarios.map((s) => {
           const Icon = icons[s.id]; const on = pick === s.id;
           return (
             <Button variant="ghost" key={s.id} role="radio" aria-checked={on} onClick={() => setPick(s.id)}
-              className={cn("h-auto w-full whitespace-normal rounded-2xl border-2 p-4 text-left shadow-soft transition-colors", on ? "border-primary bg-pink" : "border-border bg-card/85")}>
+              className={cn("h-auto w-full whitespace-normal rounded-2xl border-2 p-3 text-left shadow-soft transition-colors", on ? "border-primary bg-pink" : "border-border bg-card/85")}>
               <div className="flex items-start gap-3">
-                <span className={cn("mt-0.5 grid size-10 shrink-0 place-items-center rounded-full", on ? "bg-primary text-primary-foreground" : "bg-muted text-foreground")}><Icon /></span>
+                <span className={cn("mt-0.5 grid size-9 shrink-0 place-items-center rounded-full", on ? "bg-primary text-primary-foreground" : "bg-muted text-foreground")}><Icon /></span>
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em]"><span className="text-primary-deep">{s.label}</span><span className="flex items-center gap-1 text-muted-foreground"><Clock className="size-3" />{s.duration}</span></div>
-                  <h3 className="mt-2 text-lg font-black">{s.title}</h3>
-                  <p className="mt-1 text-sm leading-relaxed text-muted-foreground">{s.blurb}</p>
+                  <div className="flex items-center justify-between gap-2 text-[10px] font-black uppercase tracking-[0.12em]">
+                    <span className="text-primary-deep">{s.label}</span>
+                    <span className="flex items-center gap-1 text-muted-foreground"><Clock className="size-3" />{s.duration}</span>
+                  </div>
+                  <h3 className="mt-1 text-base font-black">{s.title}</h3>
+                  <p className="mt-1 text-sm text-muted-foreground">{s.blurb}</p>
                 </div>
               </div>
             </Button>
           );
         })}
       </div>
-      <div className="mt-6 flex flex-wrap items-center gap-4">
-        <Button variant="hero" size="lg" className="w-full sm:w-auto" onClick={() => { setSource("practice"); setInCall(true); }}>Start Practice Call</Button>
-        <p className="text-sm text-muted-foreground">Practice simulation · scripted, fictional, nothing is recorded.</p>
+
+      <div className="mt-5">
+        <Button variant="hero" size="lg" className="w-full" onClick={() => { setSource("practice"); setInCall(true); }}>Start call</Button>
       </div>
       <AnimatePresence>{inCall && <CallScreen difficulty={pick} source={source} onClose={() => setInCall(false)} />}</AnimatePresence>
     </div>

@@ -4,16 +4,20 @@ import logging
 import os
 import random
 from datetime import datetime, timedelta
+from pathlib import Path
 
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.schemas import AnalysisResult, SessionCreateRequest, SessionResponse, TranscriptAnalysisRequest
 from app.services.analysis import evaluate_transcript
+from app.services.voice import router as voice_router
 from app.simulator.api import router as simulator_router
 from app.simulator.dialogue import create_dialogue
 from app.simulator.service import SimulatorService
 
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 logging.basicConfig(level=os.environ.get('LOG_LEVEL', 'INFO'))
 
 app = FastAPI(title="Pink Promise API")
@@ -30,6 +34,7 @@ app.add_middleware(
 
 app.state.simulator = SimulatorService(create_dialogue())
 app.include_router(simulator_router)
+app.include_router(voice_router)
 
 SESSION_STORE: dict[str, dict[str, str]] = {}
 

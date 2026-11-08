@@ -10,6 +10,73 @@ import { CURRENT_CUSTOMER_ID, customers, scenarios, type Difficulty } from "./mo
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export const CODE_TTL_MS = 60_000;
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL as string | undefined) || "http://localhost:8000";
+
+async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const response = await fetch(`${API_BASE_URL}${path}`, {
+    ...init,
+    headers: {
+      ...(init.headers || {}),
+      ...(init.body && !init.headers?.hasOwnProperty("Content-Type") ? { "Content-Type": "application/json" } : {}),
+    },
+  });
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => "");
+    throw new Error(message || `Request failed for ${path}`);
+  }
+
+  if (typeof response.json === "function") {
+    return (await response.json()) as T;
+  }
+
+  if (typeof response.text === "function") {
+    return (await response.text()) as T;
+  }
+
+  return ({} as T);
+}
+
+export const backendSimulatorService = {
+  async runTestCall(scenarioId: string = "account-security-sim-swap") {
+    const start = await apiRequest<{ sessionId: string; status: string; transcript: Array<{ speaker: string; text: string }>; node?: { id?: string } | null }>(
+      "/simulator/sessions",
+      { method: "POST", body: JSON.stringify({ scenarioId }), headers: { "Content-Type": "application/json" } },
+    );
+
+    const sessionId = start.sessionId;
+    let current = await apiRequest<{ sessionId: string; status: string; transcript: Array<{ speaker: string; text: string }>; node?: { id?: string } | null }>(
+      `/simulator/sessions/${sessionId}/answer`,
+      { method: "POST" },
+    );
+
+    const optionSequence = ["intro_challenge", "authority_verify", "discourage_hold_firm"];
+    for (const optionId of optionSequence) {
+      if (!current || current.status === "ended") break;
+      current = await apiRequest<{ sessionId: string; status: string; transcript: Array<{ speaker: string; text: string }>; node?: { id?: string } | null }>(
+        `/simulator/sessions/${sessionId}/choose`,
+        { method: "POST", body: JSON.stringify({ optionId }), headers: { "Content-Type": "application/json" } },
+      );
+      if (current.status === "ended") break;
+    }
+
+    if (current.status !== "ended") {
+      current = await apiRequest<{ sessionId: string; status: string; transcript: Array<{ speaker: string; text: string }>; node?: { id?: string } | null }>(
+        `/simulator/sessions/${sessionId}/hangup`,
+        { method: "POST" },
+      );
+    }
+
+    const transcriptText = await apiRequest<string>(`/simulator/sessions/${sessionId}/transcript.txt?tzOffsetMin=0`);
+
+    return {
+      sessionId,
+      status: current.status,
+      transcriptEntries: current.transcript || start.transcript || [],
+      transcriptText,
+    };
+  },
+};
 
 export const verificationService = {
   findCustomers(query: string) {

@@ -17,8 +17,12 @@ import logging
 import os
 from typing import Literal, Protocol
 
-import anthropic
-from anthropic import AsyncAnthropic
+try:
+    import anthropic
+    from anthropic import AsyncAnthropic
+except ModuleNotFoundError:  # pragma: no cover - optional dependency in local script-only mode
+    anthropic = None
+    AsyncAnthropic = None
 
 from .models import DialogueNode, Scenario, ScenarioNode, SimulatorSession
 from .safety import caller_line_ok
@@ -287,6 +291,9 @@ def _credentials_configured() -> bool:
 def create_dialogue() -> Dialogue:
     """Uses Claude unless disabled by env, no credentials are configured, or the client fails."""
     if os.environ.get('SCAM_COACH_DIALOGUE', 'model').lower() == 'scripted':
+        return ScriptedDialogue()
+    if anthropic is None or AsyncAnthropic is None:
+        log.warning('Anthropic SDK is not installed; using scripted caller')
         return ScriptedDialogue()
     if not _credentials_configured():
         log.warning('No Anthropic credentials found (set ANTHROPIC_API_KEY); using scripted caller')

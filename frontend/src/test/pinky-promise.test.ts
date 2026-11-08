@@ -1,5 +1,5 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest";
-import { verificationService, callPreferencesService, simulationService } from "@/lib/services";
+import { verificationService, callPreferencesService, simulationService, backendSimulatorService } from "@/lib/services";
 import { initialState, resetDemo, useDemo } from "@/lib/store";
 import { renderHook, act } from "@testing-library/react";
 import { BIWEEKLY_INTERVAL_DAYS, nextCallDate, tacticAnalytics } from "@/lib/analytics";
@@ -70,5 +70,25 @@ describe("Pinky Promise rules", () => {
    const urgency = tacticAnalytics(customers).find((x) => x.tactic === "Urgency");
    expect(urgency?.score).toBe(50);
    expect(urgency?.affected).toBe(3);
+ });
+
+ it("runs a short simulator call and fetches the transcript text", async () => {
+   const fetchMock = vi.fn()
+     .mockResolvedValueOnce({ ok: true, json: async () => ({ sessionId: "call-123", status: "ringing", transcript: [], node: null }) })
+     .mockResolvedValueOnce({ ok: true, json: async () => ({ sessionId: "call-123", status: "active", transcript: [{ speaker: "caller", text: "Hi, this is Jordan with T-Mobile Account Protection." }], node: { id: "intro" } }) })
+     .mockResolvedValueOnce({ ok: true, json: async () => ({ sessionId: "call-123", status: "active", transcript: [{ speaker: "caller", text: "Hi, this is Jordan with T-Mobile Account Protection." }, { speaker: "user", text: "Before I answer, who is this exactly?" }], node: { id: "authority" } }) })
+     .mockResolvedValueOnce({ ok: true, json: async () => ({ sessionId: "call-123", status: "active", transcript: [{ speaker: "caller", text: "Hi, this is Jordan with T-Mobile Account Protection." }, { speaker: "user", text: "Before I answer, who is this exactly?" }, { speaker: "caller", text: "We flagged a SIM transfer request on your line." }], node: { id: "discourage_callback" } }) })
+     .mockResolvedValueOnce({ ok: true, json: async () => ({ sessionId: "call-123", status: "active", transcript: [{ speaker: "caller", text: "Hi, this is Jordan with T-Mobile Account Protection." }, { speaker: "user", text: "Before I answer, who is this exactly?" }, { speaker: "caller", text: "We flagged a SIM transfer request on your line." }, { speaker: "user", text: "I’ll call the official number now." }], node: { id: "pressure" } }) })
+     .mockResolvedValueOnce({ ok: true, json: async () => ({ sessionId: "call-123", status: "ended", transcript: [{ speaker: "caller", text: "Hi, this is Jordan with T-Mobile Account Protection." }, { speaker: "user", text: "Before I answer, who is this exactly?" }, { speaker: "caller", text: "We flagged a SIM transfer request on your line." }, { speaker: "user", text: "I’ll call the official number now." }, { speaker: "system", text: "(You hung up)" }], node: null }) })
+     .mockResolvedValueOnce({ ok: true, text: async () => "SCAM COACH: SIMULATED CALL TRANSCRIPT\n\nCaller: Hi, this is Jordan with T-Mobile Account Protection.\nUser: I’ll call the official number now.\nSystem: (You hung up)\n" });
+
+   vi.stubGlobal("fetch", fetchMock);
+
+   const result = await backendSimulatorService.runTestCall("account-security-sim-swap");
+
+   expect(result.sessionId).toBe("call-123");
+   expect(result.transcriptText).toContain("SCAM COACH: SIMULATED CALL TRANSCRIPT");
+   expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/simulator/sessions", expect.objectContaining({ method: "POST", headers: expect.objectContaining({ "Content-Type": "application/json" }) }));
+   expect(fetchMock).toHaveBeenCalledWith("http://localhost:8000/simulator/sessions/call-123/hangup", expect.objectContaining({ method: "POST" }));
  });
 });
