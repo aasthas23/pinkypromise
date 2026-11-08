@@ -1,0 +1,2 @@
+user_id,timestamp,scam_type,red_flags,vulnerability_score,employee_summary
+fake-user-001,2026-11-08T01:53:26.201979,tmobile_phishing,urgency; authority; fear; pii_request,100,The user stayed on the call longer than ideal and showed exposure to urgency and pressure-based persuasion. The response pattern suggests the need for a stronger pause-and-verify habit before sharing any code or account detail.
