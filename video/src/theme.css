@@ -1,0 +1,8 @@
+@import "tailwindcss";
+/* The app's own design tokens and utilities (generated from frontend/src/styles.css). */
+@import "./app-tokens.css";
+
+@layer base {
+  * { border-color: var(--color-border); }
+  body { margin: 0; color: var(--color-foreground); font-family: var(--font-sans); }
+}
