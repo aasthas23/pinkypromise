@@ -241,7 +241,8 @@ def cue_report(scenario: Scenario, s: SimulatorSession) -> CueReport:
     )
 
 
-def learning_outcomes(scenario: Scenario, k: KeyBehaviors, cues: CueReport) -> list[LearningOutcome]:
+def learning_outcomes(flag_title, k: KeyBehaviors, cues: CueReport) -> list[LearningOutcome]:
+    """The three outcomes for any call. `flag_title` maps a red flag id to its display title."""
     titles = {i: (t, d) for i, t, d in LEARNING_OUTCOMES}
 
     def outcome(id_: str, achieved: bool | None, detail: str) -> LearningOutcome:
@@ -251,7 +252,7 @@ def learning_outcomes(scenario: Scenario, k: KeyBehaviors, cues: CueReport) -> l
         skipped = 'You didn’t answer, so there was nothing to practice this time.'
         return [outcome(i, None, skipped) for i, _, _ in LEARNING_OUTCOMES]
 
-    names = lambda ids: _join([scenario.red_flags[f].title.lower() for f in ids]) if ids else ''  # noqa: E731
+    names = lambda ids: _join([flag_title(f).lower() for f in ids]) if ids else ''  # noqa: E731
     n, got = len(cues.encountered), len(cues.spotted)
     if n == 0:
         spot = outcome('spot_tactics', None, 'The call ended before the caller used any tactics.')
@@ -340,7 +341,7 @@ def build_debrief(
         used_model=any(t.source == 'model' for t in s.transcript),
         comparison=compare_attempts(scenario, previous, s) if previous else [],
         cues=cues,
-        learning_outcomes=learning_outcomes(scenario, k, cues),
+        learning_outcomes=learning_outcomes(lambda f: scenario.red_flags[f].title, k, cues),
     )
 
 

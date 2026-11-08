@@ -5,10 +5,11 @@ This repo contains:
 - Frontend: web app in `frontend/`
 - Backend: Python API in `backend/`
 
-The app opens on **Scam Coach**, a simulated scam-call trainer (see `CLAUDE_ScamSim.md`).
-The **backend** owns the scenarios, the step-by-step call flow and the debrief. It uses Claude to
-write the scam caller's lines and to understand what the user types. The **app** plays the call
-and shows what the backend returns.
+The app's **Practice calls** are live AI scam-call simulations, set in fictional T-Mobile scenarios.
+You talk to an AI caller as if it were a real phone call. Google Gemini runs the conversation and the speech,
+so one `GEMINI_API_KEY` is all you need, and the scenarios draw on real FTC robocall transcripts. The **backend**
+holds all keys, runs the conversation and saves transcripts. The **app** handles the microphone,
+plays the caller's voice and shows the live transcript.
 
 ## Backend (start this first)
 
@@ -17,24 +18,30 @@ cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env        # then set ANTHROPIC_API_KEY
+cp .env.example .env        # then set GEMINI_API_KEY (https://aistudio.google.com/apikey)
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 --env-file .env
-pytest                      # engine, safety and API tests (no real model calls)
+pytest                      # all tests use fake API clients: no network, no cost
 ```
 
-- **With a key:** Claude writes the caller's wording and maps typed replies to the scenario's allowed choices.
-  The model defaults to `claude-opus-5-5` at low effort (`SCAM_COACH_MODEL`, `SCAM_COACH_EFFORT`).
-  Server-side refusal fallback is on.
-- **Without a key, or if the model fails or times out:** the caller uses the scripted lines and the user taps suggested replies.
-  The call never stops because of the model.
-- **What the model never decides:** which step comes next, or how choices are scored.
-  Both come from the scenario files in `backend/app/simulator/scenarios/`.
-- **Privacy:** numbers and emails in typed replies are removed before they reach the model.
-  Caller lines that contain phone numbers, URLs or emails are replaced with the scripted line.
-  Sessions live only in memory and expire after 30 minutes.
-- **Transcripts:** when a call ends, the app saves a `.txt` transcript in its documents folder on the device
-  (`call-transcripts/`), or downloads it on web. The debrief can share or delete it.
-  The backend builds the text on request (`GET /simulator/sessions/{id}/transcript.txt`) and never writes it to disk.
+- **Conversation:** Gemini `gemini-3.5-flash-lite` (`SCAM_COACH_GEMINI_MODEL`) with thinking at `MINIMAL`, for quick spoken replies.
+  It gets the whole call history every turn and streams its replies sentence by sentence.
+  Per-turn labels for scoring use JSON-schema output.
+  Code: `app/simulator/live/gemini_llm.py`, with the prompts in `conversation.py`.
+- **Speech:** Gemini transcribes what you say (`gemini-3.5-flash-lite`, audio sent inline).
+  The caller's voice is `gemini-3.8-flash-lite-tts` (voice `Kore`), sent to the browser as WAV.
+  Code: `app/simulator/live/gemini_speech.py`.
+- **Other providers:** set `SCAM_COACH_LLM_PROVIDER` to `openai` or `anthropic`, and `SCAM_COACH_SPEECH_PROVIDER` to `openai`.
+  `openai_llm.py`, the Claude code in `conversation.py`, and `speech.py` hold those implementations.
+- **Grounding:** `data/robocall_transcripts.jsonl` holds 568 redacted real robocall transcripts from the FTC dataset (see `data/README.md`).
+  Each call retrieves 4 transcripts that match its scenario and passes them to the model as patterns to adapt, never to quote.
+  Code: `app/simulator/live/corpus.py`; scenarios in `app/simulator/live/scenarios.py`.
+- **Scoring:** after each turn, the exchange is labelled with a fixed list of tactics and user actions.
+  The debrief's outcomes come from those labels, the user's 🚩 taps and how the call ended, using fixed rules.
+- **Transcripts:** saved automatically when a call ends, to `data/call_transcripts/<scenario>_<date>_<time>_<id>_transcript.txt`.
+  This folder is ignored by git.
+- **Privacy:** keys stay on the server. Numbers and emails are removed from what the user says before it reaches the model or the transcript.
+  Recordings are transcribed and discarded. Caller lines with phone numbers, URLs or emails are dropped.
+- **Without a key:** practice calls fall back to the scripted demo call.
 
 ## Frontend
 

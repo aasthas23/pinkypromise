@@ -7,6 +7,57 @@ import { DEFAULT_OUTCOMES, debriefToSimResult, scoreFor } from "@/lib/sim-result
 import type { Debrief } from "@/lib/simulator-api";
 
 describe("pre-call briefing", () => {
+  it("discloses that the caller and its voice are AI-generated for AI calls", () => {
+    render(
+      <CallBriefing
+        title="x"
+        outcomes={DEFAULT_OUTCOMES}
+        handsOnFlags
+        aiCaller
+        onStart={() => {}}
+        onCancel={() => {}}
+      />,
+    );
+    expect(screen.getByText(/its voice is AI-generated/)).toBeInTheDocument();
+    expect(screen.getByText(/Type your replies, or choose a voice call/)).toBeInTheDocument();
+  });
+
+  it("asks text chat or voice call, with text chat as the primary default", () => {
+    const onStart = vi.fn();
+    render(
+      <CallBriefing
+        title="x"
+        outcomes={DEFAULT_OUTCOMES}
+        handsOnFlags
+        aiCaller
+        onStart={onStart}
+        onCancel={() => {}}
+      />,
+    );
+    const buttons = screen.getAllByRole("button").map((b) => b.textContent?.trim());
+    expect(buttons.indexOf("Start text chat")).toBeLessThan(buttons.indexOf("Start voice call"));
+    expect(screen.getByText(/A voice call uses your microphone/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Start text chat/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Start voice call/ }));
+    expect(onStart.mock.calls).toEqual([["text"], ["voice"]]);
+  });
+
+  it("the scripted fallback keeps a single start button", () => {
+    const onStart = vi.fn();
+    render(
+      <CallBriefing
+        title="x"
+        outcomes={DEFAULT_OUTCOMES}
+        handsOnFlags={false}
+        onStart={onStart}
+        onCancel={() => {}}
+      />,
+    );
+    expect(screen.queryByRole("button", { name: /voice call/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Start the call/ }));
+    expect(onStart).toHaveBeenCalledWith("text");
+  });
+
   it("states plainly that the call is safe and why we practice, before anything rings", () => {
     const onStart = vi.fn();
     render(
@@ -134,9 +185,9 @@ describe("🚩 spotting", () => {
       Promise.resolve(new Response(JSON.stringify({ sessionId: "s1" }), { status: 200 })),
     );
     vi.stubGlobal("fetch", fetchMock);
-    await simulationService.spotRedFlag("s1");
+    await simulationService.spotRedFlag("s1", "t3");
     expect(fetchMock).toHaveBeenCalledWith(
-      expect.stringMatching(/\/simulator\/sessions\/s1\/spot$/),
+      expect.stringMatching(/\/simulator\/live\/sessions\/s1\/spot$/),
       expect.objectContaining({ method: "POST" }),
     );
   });

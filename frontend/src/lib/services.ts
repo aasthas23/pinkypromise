@@ -1,9 +1,9 @@
 /**
  * Service layer. Each function mirrors a backend call:
  * - verificationService → authenticated session API + real-time listener (mock)
- * - simulationService → live practice calls via the simulator backend (Claude writes the
- *   caller's lines; the backend's scenario rules score the call), with the scripted mock
- *   `evaluate` kept as the offline fallback
+ * - simulationService → AI practice calls via the simulator backend: Claude holds the
+ *   conversation (grounded in real FTC scam transcripts), OpenAI handles speech, and the
+ *   backend's fixed rules score the call. The scripted mock `evaluate` is the offline fallback.
  * - trainingService → user progress tables (mock)
  * Swap implementations here without touching the UI.
  */
@@ -11,7 +11,7 @@ import { setDemo, type SimResult } from "./store";
 import type { SimulationRecord } from "./csv-analytics";
 import { CURRENT_CUSTOMER_ID, customers, scenarios, type Difficulty } from "./mock-data";
 import { debriefToSimResult } from "./sim-result";
-import { simulatorApi, type ScenarioSummary, type SessionView } from "./simulator-api";
+import { liveApi } from "./simulator-api";
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export const CODE_TTL_MS = 60_000;
@@ -126,14 +126,8 @@ export const verificationService = {
 
 const SCORES: Record<Difficulty, number> = { beginner: 24, intermediate: 38, advanced: 57 };
 
-/** Backend scenario for each practice level. All three are T-Mobile impersonation calls. */
-export const LIVE_SCENARIO: Record<Difficulty, string> = {
-  beginner: "tmobile-loyalty-discount",
-  intermediate: "tmobile-support-rep",
-  advanced: "account-security-sim-swap",
-};
-/** Last finished live session per level, so a retry is compared with it and varies. */
-const lastLiveSession: Partial<Record<Difficulty, string>> = {};
+/** Last finished AI call per level, so the next one picks a different scenario. */
+const lastAiCall: Partial<Record<Difficulty, string>> = {};
 
 function recordResult(result: SimResult) {
   setDemo((s) => ({
@@ -143,29 +137,36 @@ function recordResult(result: SimResult) {
 }
 
 export const simulationService = {
-  /** Starts a live call: the backend picks the T-Mobile scenario for this level and rings. */
-  async startLiveCall(difficulty: Difficulty): Promise<{ session: SessionView; scenario: ScenarioSummary | undefined }> {
-    const [list, session] = await Promise.all([
-      simulatorApi.scenarios(),
-      simulatorApi.start(LIVE_SCENARIO[difficulty], lastLiveSession[difficulty], new Date().getTimezoneOffset()),
-    ]);
-    return { session, scenario: list.find((x) => x.id === session.scenarioId) };
-  },
-  answer: (sessionId: string) => simulatorApi.answer(sessionId),
-  decline: (sessionId: string) => simulatorApi.decline(sessionId),
-  choose: (sessionId: string, optionId: string) => simulatorApi.choose(sessionId, optionId),
-  /** Free-text or spoken reply. The backend removes numbers and emails before using it. */
-  say: (sessionId: string, text: string) => simulatorApi.say(sessionId, text),
-  hangUp: (sessionId: string) => simulatorApi.hangUp(sessionId),
-  /** User tapped 🚩 on what the caller just said. Reviewed only after the call. */
-  spotRedFlag: (sessionId: string) => simulatorApi.spot(sessionId),
+  /** Whether the server's AI caller (LLM) and speech services are configured. */
+  aiStatus: () => liveApi.status(),
+  /** Starts an AI practice call: the server picks a T-Mobile scenario for this level, grounded in real scam transcripts. */
+  startAiCall: (difficulty: Difficulty) => liveApi.start(difficulty, new Date().getTimezoneOffset(), lastAiCall[difficulty]),
+  /** The AI caller's opening, streamed sentence by sentence. */
+  answerAiCall: (sessionId: string, signal?: AbortSignal) => liveApi.answer(sessionId, signal),
+  declineAiCall: (sessionId: string) => liveApi.decline(sessionId),
+  /** A spoken reply (transcribed on the server) or a typed one. The server removes numbers and emails. */
+  sayToAiCaller: (
+    sessionId: string,
+    reply: { audio: Blob } | { text: string } | { silence: true },
+    opts: { interrupted?: boolean; heard?: string[] } = {},
+    signal?: AbortSignal,
+  ) =>
+    "audio" in reply
+      ? liveApi.sayAudio(sessionId, reply.audio, opts, signal)
+      : liveApi.sayText(sessionId, { ...reply, ...opts }, signal),
+  /** Streaming audio URL for one caller sentence (the voice is generated on the server). */
+  aiVoiceUrl: (sessionId: string, utteranceId: string) => liveApi.speechUrl(sessionId, utteranceId),
+  hangUpAiCall: (sessionId: string) => liveApi.hangUp(sessionId),
+  /** User tapped 🚩 on what the caller is saying. Reviewed only after the call. */
+  spotRedFlag: (sessionId: string, entryId?: string) => liveApi.spot(sessionId, entryId),
 
-  /** Scores a finished live call from the backend debrief and records it like any other result. */
-  async finishLiveCall(session: SessionView, difficulty: Difficulty, source: "practice" | "biweekly" = "practice"): Promise<SimResult> {
-    const debrief = await simulatorApi.debrief(session.sessionId, lastLiveSession[difficulty]);
-    lastLiveSession[difficulty] = session.sessionId;
-    const result = debriefToSimResult(debrief, session.transcript, difficulty, source);
+  /** Scores a finished AI call from the server debrief and records it like any other result. */
+  async finishAiCall(sessionId: string, difficulty: Difficulty, source: "practice" | "biweekly" = "practice"): Promise<SimResult> {
+    const { debrief, session } = await liveApi.debrief(sessionId);
+    lastAiCall[difficulty] = sessionId;
+    const result = debriefToSimResult(debrief, session.entries, difficulty, source);
     if (session.transcriptFile) result.transcriptFile = session.transcriptFile;
+    if (debrief.provenance) result.provenance = debrief.provenance;
     recordResult(result);
     return result;
   },

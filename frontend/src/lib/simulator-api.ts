@@ -87,6 +87,8 @@ export type Debrief = {
   tally: { protective: number; risky: number };
   redFlags: { id: string; title: string; explanation: string }[];
   usedModel: boolean;
+  /** How the call was generated and grounded. */
+  provenance?: string | null;
   /** Fraud-cue identification: red flag ids the caller used, and which ones the user flagged with 🚩. */
   cues?: { encountered: string[]; spotted: string[]; missed: string[]; extraFlags: number } | null;
   learningOutcomes?: LearningOutcome[];
@@ -164,3 +166,148 @@ export const simulatorApi = {
       `/sessions/${id}/debrief${previous ? `?previous=${encodeURIComponent(previous)}` : ""}`,
     ),
 };
+
+// ---------------------------------------------------------------- live AI calls
+
+export type LiveEntry = {
+  id: string;
+  speaker: "caller" | "user" | "system";
+  text: string;
+  atMs: number;
+  interrupted: boolean;
+  /** Tactic / action labels; filled in only after the call ends. */
+  flags?: string[];
+};
+
+export type LiveSession = {
+  sessionId: string;
+  scenarioId: string;
+  title: string;
+  callerDisplay: string;
+  callerNumber: string;
+  status: "ringing" | "active" | "ended";
+  answeredAtMs: number | null;
+  entries: LiveEntry[];
+  speechAvailable: boolean;
+  transcriptFile: string | null;
+};
+
+export type LiveStatus = {
+  llm: boolean;
+  speech: boolean;
+  model: string | null;
+  learningOutcomes: OutcomeDefinition[];
+};
+
+export type LiveEvent =
+  | { type: "user"; entry: LiveEntry }
+  | { type: "no_speech" }
+  | { type: "caller"; entryId: string; utteranceId: string; text: string; atMs: number }
+  | { type: "done"; entryId: string | null; ended: boolean; session: LiveSession }
+  | { type: "error"; message: string };
+
+const IDLE_TIMEOUT_MS = 30_000;
+
+/** Reads server-sent events from a streaming response. Aborts if no data arrives for 30 s. */
+async function* readEvents(
+  path: string,
+  init: RequestInit,
+  signal?: AbortSignal,
+): AsyncGenerator<LiveEvent> {
+  const controller = new AbortController();
+  const abort = () => controller.abort();
+  signal?.addEventListener("abort", abort, { once: true });
+  let idle = setTimeout(abort, IDLE_TIMEOUT_MS);
+  try {
+    let res: Response;
+    try {
+      res = await fetch(`${apiBaseUrl()}/simulator/live${path}`, {
+        ...init,
+        method: "POST",
+        signal: controller.signal,
+      });
+    } catch {
+      if (signal?.aborted) return;
+      throw new SimulatorApiError(`Can’t reach the practice server at ${apiBaseUrl()}.`);
+    }
+    if (!res.ok || !res.body) {
+      let detail = `Request failed (${res.status}).`;
+      try {
+        const data = await res.json();
+        if (typeof data?.detail === "string") detail = data.detail;
+      } catch {
+        /* keep generic */
+      }
+      throw new SimulatorApiError(detail, res.status);
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+    for (;;) {
+      let chunk: ReadableStreamReadResult<Uint8Array>;
+      try {
+        chunk = await reader.read();
+      } catch {
+        if (signal?.aborted) return;
+        throw new SimulatorApiError("The connection to the practice server dropped.");
+      }
+      if (chunk.done) break;
+      clearTimeout(idle);
+      idle = setTimeout(abort, IDLE_TIMEOUT_MS);
+      buf += decoder.decode(chunk.value, { stream: true });
+      let sep: number;
+      while ((sep = buf.indexOf("\n\n")) >= 0) {
+        const line = buf.slice(0, sep).trim();
+        buf = buf.slice(sep + 2);
+        if (line.startsWith("data: ")) yield JSON.parse(line.slice(6)) as LiveEvent;
+      }
+    }
+  } finally {
+    clearTimeout(idle);
+    signal?.removeEventListener("abort", abort);
+  }
+}
+
+export const liveApi = {
+  status: () => liveJson<LiveStatus>("GET", "/status"),
+  start: (difficulty: string, tzOffsetMin: number, previousSessionId?: string) =>
+    liveJson<LiveSession>("POST", "/sessions", { difficulty, tzOffsetMin, previousSessionId }),
+  answer: (id: string, signal?: AbortSignal) => readEvents(`/sessions/${id}/answer`, {}, signal),
+  sayText: (
+    id: string,
+    body: { text?: string; interrupted?: boolean; heard?: string[]; silence?: boolean },
+    signal?: AbortSignal,
+  ) =>
+    readEvents(
+      `/sessions/${id}/turn`,
+      { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) },
+      signal,
+    ),
+  sayAudio: (
+    id: string,
+    audio: Blob,
+    opts: { interrupted?: boolean; heard?: string[] },
+    signal?: AbortSignal,
+  ) => {
+    const q = new URLSearchParams();
+    if (opts.interrupted) q.set("interrupted", "true");
+    if (opts.heard) q.set("heard", opts.heard.join(","));
+    return readEvents(
+      `/sessions/${id}/turn?${q}`,
+      { headers: { "Content-Type": audio.type || "audio/webm" }, body: audio },
+      signal,
+    );
+  },
+  spot: (id: string, entryId?: string) =>
+    liveJson<LiveSession>("POST", `/sessions/${id}/spot`, { entryId }),
+  hangUp: (id: string) => liveJson<LiveSession>("POST", `/sessions/${id}/hangup`),
+  decline: (id: string) => liveJson<LiveSession>("POST", `/sessions/${id}/decline`),
+  debrief: (id: string) =>
+    liveJson<{ debrief: Debrief; session: LiveSession }>("GET", `/sessions/${id}/debrief`),
+  speechUrl: (id: string, utteranceId: string) =>
+    `${apiBaseUrl()}/simulator/live/sessions/${id}/speech/${utteranceId}`,
+};
+
+async function liveJson<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+  return (await (await send(method, `/live${path}`, body)).json()) as T;
+}

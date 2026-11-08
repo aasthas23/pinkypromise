@@ -35,7 +35,7 @@ function Results() {
     <div className="space-y-6">
       <p role="status" className="rounded-xl bg-mint p-4 font-bold text-mint-foreground">This was a fake call — a safe scam simulation, not a real T-Mobile account call.</p>
       <h1 className="text-3xl font-black md:text-4xl">Nice work! Let's see how you did.</h1>
-      {r.outcomeTitle && <section className="rounded-3xl bg-card p-6 shadow-soft"><h2 className="text-lg font-black">{r.outcomeTitle}</h2>{r.outcomeSummary && <p className="mt-1 text-muted-foreground">{r.outcomeSummary}</p>}{r.aiCaller && <p className="mt-2 text-xs text-muted-foreground">The caller’s wording was written live by AI within the scenario’s fixed steps. Your score comes from the scenario’s safety rules, not from the AI.</p>}</section>}
+      {r.outcomeTitle && <section className="rounded-3xl bg-card p-6 shadow-soft"><h2 className="text-lg font-black">{r.outcomeTitle}</h2>{r.outcomeSummary && <p className="mt-1 text-muted-foreground">{r.outcomeSummary}</p>}{r.aiCaller && <p className="mt-2 text-xs text-muted-foreground">{r.provenance ?? "The caller’s lines were written live by AI."} Your score comes from the training’s fixed safety rules, not from the AI’s judgment.</p>}</section>}
       <section className="grid items-center gap-6 rounded-[2rem] bg-pink p-6 md:grid-cols-[auto_1fr] md:p-10">
         <ScoreRing value={r.score} size={220} stroke={20} color={level.c} track="var(--card)" label={`Vulnerability score ${r.score} of 100`}>
           <div><motion.p initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.5 }} className="text-6xl font-black">{r.score}</motion.p><p className="text-sm font-bold text-muted-foreground">vulnerability</p></div>

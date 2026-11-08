@@ -1,11 +1,17 @@
 import { motion } from "motion/react";
 import { useEffect, useState } from "react";
-import { Volume2, VolumeX } from "lucide-react";
+import { MessageSquare, Mic, Volume2, VolumeX } from "lucide-react";
 
 import { Mascot } from "@/components/safe/Mascot";
 import { Button } from "@/components/ui/button";
 import { speakLine } from "@/lib/call-voice";
 import type { OutcomeDefinition } from "@/lib/simulator-api";
+
+const AI_NOTE =
+  "The caller is an AI. In a voice call its voice is AI-generated, and what you say is transcribed to run the call; recordings aren’t kept.";
+
+/** How the person takes part in an AI call. Text chat is the default. */
+export type CallMode = "text" | "voice";
 
 /**
  * Shown before every practice call. Learners play themselves receiving the call
@@ -16,13 +22,16 @@ export function CallBriefing({
   title,
   outcomes,
   handsOnFlags,
+  aiCaller = false,
   onStart,
   onCancel,
 }: {
   title: string;
   outcomes: OutcomeDefinition[];
   handsOnFlags: boolean;
-  onStart: () => void;
+  /** AI calls: say that the caller and its voice are AI-generated, and offer text chat or a voice call. */
+  aiCaller?: boolean;
+  onStart: (mode: CallMode) => void;
   onCancel: () => void;
 }) {
   const [reading, setReading] = useState<AbortController | null>(null);
@@ -37,7 +46,9 @@ export function CallBriefing({
   // handsOnFlags is false only for the scripted fallback, which plays without replies.
   const steps = handsOnFlags
     ? [
-        "Reply as yourself. Never use real details.",
+        aiCaller
+          ? "Type your replies, or choose a voice call to talk out loud. Never use real details."
+          : "Reply as yourself. Never use real details.",
         "Tap 🚩 when something feels off.",
         "Hang up anytime.",
       ]
@@ -45,6 +56,7 @@ export function CallBriefing({
   const script = [
     "You can’t be scammed here.",
     `This is a practice call: ${title}. No real person is calling.`,
+    ...(aiCaller ? [AI_NOTE] : []),
     `You’ll practice: ${outcomes.map((o) => o.title).join("; ")}.`,
     steps.join(" "),
   ].join(" ");
@@ -83,6 +95,7 @@ export function CallBriefing({
           You can’t be scammed here.
         </h2>
         <p>“{title}” is a practice call. No real person is calling.</p>
+        {aiCaller && <p className="text-sm text-ink-foreground/70">{AI_NOTE}</p>}
 
         <section
           aria-labelledby="practice-heading"
@@ -104,9 +117,21 @@ export function CallBriefing({
           </ul>
         </section>
 
-        <Button variant="hero" size="lg" onClick={onStart}>
-          Start the call
-        </Button>
+        {aiCaller ? (
+          <>
+            <Button variant="hero" size="lg" onClick={() => onStart("text")}>
+              <MessageSquare /> Start text chat
+            </Button>
+            <Button variant="call" size="lg" onClick={() => onStart("voice")}>
+              <Mic /> Start voice call
+            </Button>
+            <p className="text-sm text-ink-foreground/70">A voice call uses your microphone.</p>
+          </>
+        ) : (
+          <Button variant="hero" size="lg" onClick={() => onStart("text")}>
+            Start the call
+          </Button>
+        )}
         <div className="flex flex-wrap justify-center gap-3">
           <Button variant="call" onClick={toggleRead} aria-pressed={!!reading}>
             {reading ? <VolumeX /> : <Volume2 />} {reading ? "Stop reading" : "Read this to me"}

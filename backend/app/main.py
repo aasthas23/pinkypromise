@@ -15,10 +15,16 @@ from app.services.analysis import evaluate_transcript
 from app.services.voice import router as voice_router
 from app.simulator.api import router as simulator_router
 from app.simulator.dialogue import create_dialogue
+from app.simulator.live.api import router as live_router
+from app.simulator.live.conversation import create_caller
+from app.simulator.live.service import LiveService
+from app.simulator.live.speech import create_speech
 from app.simulator.service import SimulatorService
 
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-logging.basicConfig(level=os.environ.get('LOG_LEVEL', 'INFO'))
+if not os.environ.get("SCAM_COACH_SKIP_DOTENV"):
+    load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
+logging.basicConfig(level=os.environ.get("LOG_LEVEL", "INFO"))
 
 app = FastAPI(title="Pink Promise API")
 
@@ -26,15 +32,17 @@ app = FastAPI(title="Pink Promise API")
 # dev and Expo web. Set ALLOWED_ORIGINS (comma-separated) to lock it down.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[o.strip() for o in os.environ.get('ALLOWED_ORIGINS', '*').split(',')],
-    allow_methods=['GET', 'POST', 'DELETE'],
-    allow_headers=['Content-Type'],
-    expose_headers=['Content-Disposition'],
+    allow_origins=[o.strip() for o in os.environ.get("ALLOWED_ORIGINS", "*").split(",")],
+    allow_methods=["GET", "POST", "DELETE"],
+    allow_headers=["Content-Type"],
+    expose_headers=["Content-Disposition"],
 )
 
 app.state.simulator = SimulatorService(create_dialogue())
+app.state.live = LiveService(create_caller(), create_speech())
 app.include_router(simulator_router)
 app.include_router(voice_router)
+app.include_router(live_router)
 
 SESSION_STORE: dict[str, dict[str, str]] = {}
 

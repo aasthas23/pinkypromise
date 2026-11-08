@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { readingMs, speakLine } from "@/lib/call-voice";
-import { LIVE_SCENARIO, simulationService } from "@/lib/services";
+import { simulationService } from "@/lib/services";
 import { debriefToSimResult, scoreFor } from "@/lib/sim-result";
 import {
   apiBaseUrl,
@@ -114,78 +114,144 @@ describe("debriefToSimResult", () => {
   });
 });
 
-describe("live call service", () => {
-  const view = (status: SessionView["status"]): SessionView => ({
-    sessionId: "s1",
-    scenarioId: LIVE_SCENARIO.beginner,
-    status,
-    transcript: entries,
-    node: null,
-    endingId: status === "ended" ? "verified" : null,
-    answeredAtMs: 1,
-    freeTextAvailable: true,
-  });
+describe("AI call service", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
-  const ok = (body: unknown, headers: Record<string, string> = {}) =>
-    Promise.resolve(
-      new Response(typeof body === "string" ? body : JSON.stringify(body), {
-        status: 200,
-        headers,
-      }),
-    );
+  const sse = (events: object[]) => {
+    const body = events.map((e) => `data: ${JSON.stringify(e)}\n\n`).join("");
+    // Split mid-event to prove the reader handles chunk boundaries.
+    const cut = Math.floor(body.length / 2);
+    const stream = new ReadableStream({
+      start(c) {
+        c.enqueue(new TextEncoder().encode(body.slice(0, cut)));
+        c.enqueue(new TextEncoder().encode(body.slice(cut)));
+        c.close();
+      },
+    });
+    return new Response(stream, { status: 200, headers: { "content-type": "text/event-stream" } });
+  };
+  const liveSession = (status: string, extra = {}) => ({
+    sessionId: "l1",
+    scenarioId: "tmobile-sim-swap",
+    title: "Urgent SIM-swap warning",
+    callerDisplay: "T-Mobile Fraud Department",
+    callerNumber: "(800) 555-0142",
+    status,
+    answeredAtMs: 1,
+    entries: [],
+    speechAvailable: true,
+    transcriptFile: null,
+    ...extra,
+  });
 
   beforeEach(() => {
-    fetchMock = vi.fn((url: string) => {
-      if (url.endsWith("/simulator/scenarios"))
-        return ok([{ id: LIVE_SCENARIO.beginner, caller: { displayName: "T-Mobile Rewards" } }]);
-      if (url.endsWith("/simulator/sessions")) return ok(view("ringing"));
-      if (url.includes("/debrief")) return ok(debrief());
-      if (url.includes("/transcript.txt"))
-        return ok("SCAM COACH", { "content-disposition": 'attachment; filename="call.txt"' });
-      return ok(view("active"));
+    fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.endsWith("/live/status"))
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              llm: true,
+              speech: true,
+              model: "claude-opus-5-5",
+              learningOutcomes: [],
+            }),
+          ),
+        );
+      if (url.endsWith("/live/sessions") && init?.method === "POST")
+        return Promise.resolve(new Response(JSON.stringify(liveSession("ringing"))));
+      if (url.includes("/answer") || url.includes("/turn"))
+        return Promise.resolve(
+          sse([
+            {
+              type: "caller",
+              entryId: "t1",
+              utteranceId: "u1",
+              text: "This is the T-Mobile Fraud Department.",
+              atMs: 1,
+            },
+            { type: "done", entryId: "t1", ended: false, session: liveSession("active") },
+          ]),
+        );
+      if (url.includes("/debrief"))
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              debrief: { ...debrief(), provenance: "Grounded in 4 real FTC robocall transcripts." },
+              session: liveSession("ended", {
+                transcriptFile: "data/call_transcripts/tmobile_sim_swap_x_transcript.txt",
+                entries: [
+                  {
+                    id: "t1",
+                    speaker: "caller",
+                    text: "This is the T-Mobile Fraud Department.",
+                    atMs: 1,
+                    interrupted: false,
+                    flags: ["authority_claim"],
+                  },
+                ],
+              }),
+            }),
+          ),
+        );
+      return Promise.resolve(new Response(JSON.stringify(liveSession("active"))));
     });
     vi.stubGlobal("fetch", fetchMock);
   });
   afterEach(() => vi.unstubAllGlobals());
 
-  it("all three levels map to T-Mobile scenarios", () => {
-    expect(LIVE_SCENARIO).toEqual({
-      beginner: "tmobile-loyalty-discount",
-      intermediate: "tmobile-support-rep",
-      advanced: "account-security-sim-swap",
+  it("starts an AI call for the level, with the local timezone", async () => {
+    const s = await simulationService.startAiCall("advanced");
+    expect(s.status).toBe("ringing");
+    const [url, init] = fetchMock.mock.calls.find(([u]) => String(u).endsWith("/live/sessions"))!;
+    expect(url).toMatch(/\/simulator\/live\/sessions$/);
+    expect(JSON.parse(init.body)).toMatchObject({
+      difficulty: "advanced",
+      tzOffsetMin: new Date().getTimezoneOffset(),
     });
   });
 
-  it("starts the right scenario and records the scored result", async () => {
-    const { session, scenario } = await simulationService.startLiveCall("beginner");
-    expect(session.status).toBe("ringing");
-    expect(scenario?.caller.displayName).toBe("T-Mobile Rewards");
-    const startCall = fetchMock.mock.calls.find(([u]) => String(u).endsWith("/simulator/sessions"));
-    expect(JSON.parse(startCall![1].body)).toMatchObject({
-      scenarioId: "tmobile-loyalty-discount",
-    });
-
-    const before = getDemo().simulations;
-    const result = await simulationService.finishLiveCall(view("ended"), "beginner");
-    expect(result.live).toBe(true);
-    expect(getDemo().lastResult).toEqual(result);
-    expect(getDemo().simulations).toBe(before + 1);
+  it("streams the caller's sentences as they arrive", async () => {
+    const got = [];
+    for await (const ev of simulationService.answerAiCall("l1")) got.push(ev.type);
+    expect(got).toEqual(["caller", "done"]);
   });
 
-  it("never triggers a download: the server saves the transcript and the result keeps its path", async () => {
-    const click = vi.spyOn(HTMLAnchorElement.prototype, "click");
-    const createUrl = vi.fn();
-    URL.createObjectURL = createUrl;
-    await simulationService.startLiveCall("advanced");
-    const startCall = fetchMock.mock.calls.find(([u]) => String(u).endsWith("/simulator/sessions"));
-    expect(JSON.parse(startCall![1].body).tzOffsetMin).toBe(new Date().getTimezoneOffset());
+  it("sends spoken replies as raw audio, flagging interruptions and what was heard", async () => {
+    const audio = new Blob(["x"], { type: "audio/webm;codecs=opus" });
+    for await (const _ of simulationService.sayToAiCaller(
+      "l1",
+      { audio },
+      { interrupted: true, heard: ["u1", "u2"] },
+    ))
+      void _;
+    const [url, init] = fetchMock.mock.calls.find(([u]) => String(u).includes("/turn"))!;
+    expect(url).toMatch(/\/live\/sessions\/l1\/turn\?interrupted=true&heard=u1%2Cu2$/);
+    expect(init.headers["Content-Type"]).toBe("audio/webm;codecs=opus");
+    expect(init.body).toBe(audio);
+  });
 
-    const ended = { ...view("ended"), transcriptFile: "data/call_transcripts/x_transcript.txt" };
-    const result = await simulationService.finishLiveCall(ended, "advanced");
-    expect(result.transcriptFile).toBe("data/call_transcripts/x_transcript.txt");
-    expect(fetchMock.mock.calls.some(([u]) => String(u).includes("transcript.txt"))).toBe(false);
-    expect(click).not.toHaveBeenCalled();
-    expect(createUrl).not.toHaveBeenCalled();
+  it("sends typed replies and silence as JSON", async () => {
+    for await (const _ of simulationService.sayToAiCaller("l1", { text: "Who is this?" })) void _;
+    for await (const _ of simulationService.sayToAiCaller("l1", { silence: true })) void _;
+    const bodies = fetchMock.mock.calls
+      .filter(([u]) => String(u).includes("/turn"))
+      .map(([, i]) => JSON.parse(i.body));
+    expect(bodies).toEqual([{ text: "Who is this?" }, { silence: true }]);
+  });
+
+  it("records the scored result with the saved transcript and how the call was grounded", async () => {
+    const r = await simulationService.finishAiCall("l1", "advanced");
+    expect(r.transcriptFile).toBe("data/call_transcripts/tmobile_sim_swap_x_transcript.txt");
+    expect(r.provenance).toMatch(/real FTC robocall transcripts/);
+    expect(r.transcript).toEqual([
+      { who: "caller", text: "This is the T-Mobile Fraud Department.", flag: "Authority" },
+    ]);
+    expect(getDemo().lastResult).toEqual(r);
+  });
+
+  it("only reads AI voice from server-generated lines", () => {
+    expect(simulationService.aiVoiceUrl("l1", "u1")).toMatch(
+      /\/simulator\/live\/sessions\/l1\/speech\/u1$/,
+    );
   });
 
   it("reports an unreachable server so the call can fall back to the scripted demo", async () => {
@@ -193,7 +259,7 @@ describe("live call service", () => {
       "fetch",
       vi.fn(() => Promise.reject(new TypeError("Failed to fetch"))),
     );
-    await expect(simulationService.startLiveCall("advanced")).rejects.toThrow(
+    await expect(simulationService.startAiCall("advanced")).rejects.toThrow(
       /Can’t reach the practice server/,
     );
   });
