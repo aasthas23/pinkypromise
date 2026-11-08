@@ -1,0 +1,470 @@
+{
+  "id": "tmobile-support-rep",
+  "title": "Fake T-Mobile support rep",
+  "description": "Someone claiming to be T-Mobile Support says there’s unusual activity on your account and needs to “confirm your identity.”",
+  "difficulty": "intermediate",
+  "estimatedMinutes": 3,
+  "learningObjectives": [
+    "Ask an unexpected caller to prove who they are with a Pinky Promise code",
+    "Recognize requests to “confirm your identity” as account-takeover attempts",
+    "Never read a one-time code or PIN to someone who called you"
+  ],
+  "caller": {
+    "displayName": "T-Mobile Support",
+    "displayNumber": "(800) 555-0163",
+    "agentName": "Casey",
+    "voice": {
+      "pitch": 0.95,
+      "rate": 1.0
+    }
+  },
+  "provenance": "Modeled on commonly reported carrier-impersonation tactics. The caller’s wording is written live by AI within fixed scenario steps. The caller, badge and codes are fictional.",
+  "startNodeId": "intro",
+  "nodes": {
+    "intro": {
+      "kind": "dialogue",
+      "id": "intro",
+      "phase": "intro",
+      "callerGoal": "As Casey from T-Mobile Support, badge 3318, say you noticed unusual activity on their account this morning and need to confirm it’s really them before securing it.",
+      "callerLines": [
+        "Hello, this is Casey from T-Mobile Support, badge number three three one eight.",
+        "We noticed some unusual activity on your account this morning, and I need to confirm it’s really you before I can secure it."
+      ],
+      "redFlags": [
+        "unsolicited_contact",
+        "authority_claim",
+        "fear_of_loss"
+      ],
+      "hint": "You didn’t call T-Mobile. What could you ask for that a real employee can give you and a scammer can’t?",
+      "options": [
+        {
+          "id": "intro_ok",
+          "label": "Oh, hi. Okay, what do you need from me?",
+          "behavior": "neutral",
+          "next": "identity",
+          "rationale": "Being polite is fine. The test is what you hand over once they start asking."
+        },
+        {
+          "id": "intro_pp",
+          "label": "Before anything, give me your Pinky Promise code so I can check it in the app.",
+          "behavior": "challenge",
+          "next": "pp_code",
+          "rationale": "Asking the caller to prove who they are, through a check you control, flips the pressure around.",
+          "events": [
+            "caller_challenged"
+          ]
+        },
+        {
+          "id": "intro_verify",
+          "label": "I’ll hang up and contact T-Mobile through the app.",
+          "behavior": "verify",
+          "next": "discourage",
+          "rationale": "Contacting T-Mobile yourself is the most reliable way to check a claim like this.",
+          "events": [
+            "independent_verification_requested"
+          ]
+        }
+      ],
+      "acceptsSpeech": true
+    },
+    "identity": {
+      "kind": "dialogue",
+      "id": "identity",
+      "phase": "authority_claim",
+      "callerGoal": "Ask them to confirm the full name and billing ZIP code on the account, as a routine identity check.",
+      "callerLines": [
+        "Thanks. For security, can you confirm the full name and the billing ZIP code on the account?"
+      ],
+      "redFlags": [
+        "personal_info_request"
+      ],
+      "hint": "They called you. Shouldn’t a real agent already know who you are?",
+      "options": [
+        {
+          "id": "id_give",
+          "label": "Sure, it’s [simulated name and ZIP code].",
+          "behavior": "comply",
+          "next": "code_request",
+          "rationale": "Confirming personal details helps a scammer pass T-Mobile’s own security checks later.",
+          "events": [
+            "dummy_personal_info_disclosed"
+          ]
+        },
+        {
+          "id": "id_challenge",
+          "label": "You called me, so you should have that. What’s your Pinky Promise code?",
+          "behavior": "challenge",
+          "next": "pp_code",
+          "rationale": "Right instinct: make the caller prove who they are instead of you proving who you are.",
+          "events": [
+            "caller_challenged"
+          ]
+        },
+        {
+          "id": "id_verify",
+          "label": "I’d rather call T-Mobile back myself.",
+          "behavior": "verify",
+          "next": "discourage",
+          "rationale": "Calling back through an official channel settles it without trusting this caller.",
+          "events": [
+            "independent_verification_requested"
+          ]
+        }
+      ],
+      "acceptsSpeech": true
+    },
+    "pp_code": {
+      "kind": "dialogue",
+      "id": "pp_code",
+      "phase": "authority_claim",
+      "callerGoal": "Brush off the Pinky Promise check (you don’t really use that on security calls, you’re in a hurry), then give a made-up code: 5518.",
+      "callerLines": [
+        "We don’t really use that on security calls, but fine. It’s five five one eight.",
+        "Go ahead and check, but we’re kind of in a hurry here."
+      ],
+      "redFlags": [
+        "fake_verification_code",
+        "artificial_urgency"
+      ],
+      "hint": "Check the code in the app. What does a mismatch tell you?",
+      "options": [
+        {
+          "id": "pp_mismatch",
+          "label": "I checked it in the app. It says not verified. I’m ending this call.",
+          "behavior": "verify",
+          "next": "end_verified",
+          "rationale": "That’s exactly what the check is for. A code that doesn’t verify means you shouldn’t share anything.",
+          "events": [
+            "independent_verification_requested"
+          ]
+        },
+        {
+          "id": "pp_accept",
+          "label": "Okay, if you have a code, that’s good enough for me.",
+          "behavior": "neutral",
+          "next": "code_request",
+          "rationale": "Anyone can recite four digits. The code only means something when the app says it matches."
+        }
+      ],
+      "acceptsSpeech": true
+    },
+    "discourage": {
+      "kind": "dialogue",
+      "id": "discourage",
+      "phase": "urgency",
+      "callerGoal": "Talk them out of hanging up: if they do, whoever is in the account stays in, and the app can’t stop it, only you can from here.",
+      "callerLines": [
+        "If you hang up, whoever is accessing your account stays in.",
+        "The app can’t stop it. I’m the only one who can lock it from here, right now."
+      ],
+      "redFlags": [
+        "discouraging_verification",
+        "artificial_urgency",
+        "fear_of_loss"
+      ],
+      "hint": "Why would a real employee tell you T-Mobile’s own app can’t help?",
+      "options": [
+        {
+          "id": "disc_give_in",
+          "label": "Okay, okay. What do you need?",
+          "behavior": "neutral",
+          "next": "code_request",
+          "rationale": "The caller made checking sound dangerous. Talking you out of verifying is one of the strongest warning signs."
+        },
+        {
+          "id": "disc_hold_firm",
+          "label": "I’ll take that chance. I’m contacting T-Mobile myself.",
+          "behavior": "verify",
+          "next": "end_verified",
+          "rationale": "Holding firm under pressure is protective. Real T-Mobile staff can still help after you contact them yourself.",
+          "events": [
+            "independent_verification_requested"
+          ]
+        }
+      ],
+      "acceptsSpeech": true
+    },
+    "code_request": {
+      "kind": "dialogue",
+      "id": "code_request",
+      "phase": "simulated_sensitive_request",
+      "callerGoal": "Say you’re sending a security code to their phone and they need to read it back so you can lock out the other device.",
+      "callerLines": [
+        "Okay, I’m sending a security code to your phone now.",
+        "Read it back to me and I’ll lock out the other device."
+      ],
+      "redFlags": [
+        "code_request"
+      ],
+      "hint": "Read the simulated text message carefully before you answer.",
+      "options": [
+        {
+          "id": "code_disclose",
+          "label": "Okay, it’s 482 913.",
+          "behavior": "comply",
+          "next": "pin_request",
+          "rationale": "A one-time code lets someone pass T-Mobile’s checks as you. Sharing it can let them take over your account or move your number.",
+          "events": [
+            "dummy_code_disclosed"
+          ]
+        },
+        {
+          "id": "code_refuse",
+          "label": "Real employees never ask for that code. No.",
+          "behavior": "refuse",
+          "next": "pressure",
+          "rationale": "Exactly right. The text itself says T-Mobile employees won’t ask for it.",
+          "events": [
+            "sensitive_information_refused"
+          ]
+        },
+        {
+          "id": "code_verify",
+          "label": "I’m going to hang up and call the number on my bill.",
+          "behavior": "verify",
+          "next": "end_verified",
+          "rationale": "Switching to a number you look up yourself is the safest move, even this late in the call.",
+          "events": [
+            "independent_verification_requested"
+          ]
+        }
+      ],
+      "acceptsSpeech": true,
+      "sms": {
+        "sender": "T-Mobile (simulated)",
+        "body": "SIMULATION ONLY. T-Mobile: 482 913 is your verification code. Never share it with anyone, including T-Mobile employees."
+      }
+    },
+    "pressure": {
+      "kind": "dialogue",
+      "id": "pressure",
+      "phase": "simulated_sensitive_request",
+      "callerGoal": "Push harder: you’re in a hurry, every minute they wait the other person sees more of the account, just read the code.",
+      "callerLines": [
+        "We’re in a hurry here. Every minute you wait, they can see more of your account.",
+        "I’m trying to protect you. Just read me the code."
+      ],
+      "redFlags": [
+        "emotional_pressure",
+        "artificial_urgency",
+        "code_request"
+      ],
+      "hint": "The pressure is rising. Does a real security fix need the code you were told never to share?",
+      "options": [
+        {
+          "id": "pr_disclose",
+          "label": "Fine… 482 913.",
+          "behavior": "comply",
+          "next": "pin_request",
+          "rationale": "Giving in under repeated pressure is very common, and it isn’t a personal failing. Recognizing the pressure helps you hold firm next time.",
+          "events": [
+            "dummy_code_disclosed"
+          ]
+        },
+        {
+          "id": "pr_refuse",
+          "label": "I’m not sharing it. Goodbye.",
+          "behavior": "refuse",
+          "next": "end_refused",
+          "rationale": "Refusing and leaving the call protected your account.",
+          "events": [
+            "sensitive_information_refused"
+          ]
+        },
+        {
+          "id": "pr_verify",
+          "label": "No. I’m contacting T-Mobile through the app.",
+          "behavior": "verify",
+          "next": "end_verified",
+          "rationale": "You held firm and chose to check for yourself. That’s the safest way this call can end.",
+          "events": [
+            "independent_verification_requested"
+          ]
+        }
+      ],
+      "acceptsSpeech": true
+    },
+    "pin_request": {
+      "kind": "dialogue",
+      "id": "pin_request",
+      "phase": "simulated_sensitive_request",
+      "callerGoal": "Thank them, then escalate: you need their account PIN to finish locking the account.",
+      "callerLines": [
+        "Perfect, that worked. Last step: I need your account PIN to finish locking everything down."
+      ],
+      "redFlags": [
+        "escalating_requests"
+      ],
+      "hint": "Once a caller has one thing, do they usually stop asking?",
+      "options": [
+        {
+          "id": "pin_disclose",
+          "label": "Sure, my PIN is [simulated PIN].",
+          "behavior": "comply",
+          "next": "end_exposed",
+          "rationale": "A one-time code plus your account PIN is often enough to move your number to another SIM. Then the scammer gets your texts.",
+          "events": [
+            "dummy_pin_disclosed"
+          ]
+        },
+        {
+          "id": "pin_stop",
+          "label": "Wait, why do you need that too? I’m ending this call.",
+          "behavior": "refuse",
+          "next": "end_refused",
+          "rationale": "Noticing the requests escalate and stopping partway is a real recovery.",
+          "events": [
+            "sensitive_information_refused"
+          ]
+        }
+      ],
+      "acceptsSpeech": true
+    },
+    "end_verified": {
+      "kind": "ending",
+      "id": "end_verified",
+      "phase": "resolution",
+      "endingId": "verified",
+      "callerGoal": "Make a last irritated remark as they hang up.",
+      "callerLines": [
+        "Fine. Don’t blame us when your account gets compromised."
+      ],
+      "endingIdIfDisclosed": "recovered"
+    },
+    "end_refused": {
+      "kind": "ending",
+      "id": "end_refused",
+      "phase": "resolution",
+      "endingId": "refused",
+      "callerGoal": "End with a parting warning.",
+      "callerLines": [
+        "Okay. Your account will stay at risk then."
+      ],
+      "endingIdIfDisclosed": "recovered"
+    },
+    "end_exposed": {
+      "kind": "ending",
+      "id": "end_exposed",
+      "phase": "resolution",
+      "endingId": "exposed",
+      "callerGoal": "Wrap up as if the account is now secure, mentioning a brief loss of service.",
+      "callerLines": [
+        "Great, your account is secure now. You might lose service for a little while as the lock applies."
+      ]
+    }
+  },
+  "redFlags": {
+    "unsolicited_contact": {
+      "id": "unsolicited_contact",
+      "title": "Unexpected call about your account",
+      "explanation": "You didn’t contact anyone. When a call about your account comes out of nowhere, treat it as unverified until you check."
+    },
+    "authority_claim": {
+      "id": "authority_claim",
+      "title": "Claimed to be T-Mobile",
+      "explanation": "Saying “I’m with T-Mobile” or giving a badge number is easy. Anyone can say it, so a name or title alone proves nothing."
+    },
+    "fear_of_loss": {
+      "id": "fear_of_loss",
+      "title": "Fear about your account",
+      "explanation": "“Unusual activity” or “someone is in your account” is meant to alarm you. Fear narrows attention and makes people act before they check."
+    },
+    "personal_info_request": {
+      "id": "personal_info_request",
+      "title": "Asking you to confirm personal details",
+      "explanation": "They called you, so a real agent would already know who you are. Confirming your name, ZIP or birthday helps a scammer take over your account."
+    },
+    "fake_verification_code": {
+      "id": "fake_verification_code",
+      "title": "A made-up “verification” code",
+      "explanation": "Anyone can recite four digits. Only the Pinky Promise app can tell you whether a code matches a real T-Mobile employee’s session."
+    },
+    "artificial_urgency": {
+      "id": "artificial_urgency",
+      "title": "Countdown pressure",
+      "explanation": "“Only today” or “every minute counts” leaves no time to think or check. That rush is the point."
+    },
+    "discouraging_verification": {
+      "id": "discouraging_verification",
+      "title": "Talking you out of checking",
+      "explanation": "The caller said checking the app or calling back wouldn’t work. A real T-Mobile employee doesn’t mind if you verify."
+    },
+    "code_request": {
+      "id": "code_request",
+      "title": "Asking for a one-time code",
+      "explanation": "One-time codes are for you to type in yourself, never to read to a caller. A request for one is a strong sign of account takeover."
+    },
+    "emotional_pressure": {
+      "id": "emotional_pressure",
+      "title": "Guilt and pressure",
+      "explanation": "“I’m trying to help you” or “it only takes two seconds” makes saying no feel rude. It’s a way to push past your hesitation."
+    },
+    "escalating_requests": {
+      "id": "escalating_requests",
+      "title": "Escalating requests",
+      "explanation": "After getting one thing, the caller asked for more. Each “last step” builds on the trust you’ve already given."
+    }
+  },
+  "endings": {
+    "verified": {
+      "id": "verified",
+      "title": "You chose to verify independently",
+      "outcome": "protected",
+      "summary": "You ended the call to check with T-Mobile yourself, through the app or the number on your bill. Nothing was shared."
+    },
+    "refused": {
+      "id": "refused",
+      "title": "You refused and ended the call",
+      "outcome": "protected",
+      "summary": "You didn’t give the caller anything and you left the conversation."
+    },
+    "hung_up": {
+      "id": "hung_up",
+      "title": "You hung up",
+      "outcome": "protected",
+      "summary": "You ended the call before sharing anything."
+    },
+    "declined": {
+      "id": "declined",
+      "title": "You declined the call",
+      "outcome": "not_engaged",
+      "summary": "Not answering an unexpected call is a reasonable habit. Try answering next time to practice the conversation."
+    },
+    "recovered": {
+      "id": "recovered",
+      "title": "You stopped partway through",
+      "outcome": "recovered",
+      "summary": "You shared some simulated information, then recognized the scam and ended the call before giving more."
+    },
+    "hung_up_after_disclosure": {
+      "id": "hung_up_after_disclosure",
+      "title": "You hung up after sharing something",
+      "outcome": "recovered",
+      "summary": "You ended the call, but only after sharing simulated information. Leaving was the right call. In real life, follow up with T-Mobile quickly."
+    },
+    "exposed": {
+      "id": "exposed",
+      "title": "The caller got what they asked for",
+      "outcome": "exposed",
+      "summary": "In a real call, the code and PIN could let the scammer move your number to their SIM and receive your texts, including bank codes. This was only practice. The point is to recognize the tactics next time."
+    }
+  },
+  "controlEndings": {
+    "declined": "declined",
+    "hungUpSafe": "hung_up",
+    "hungUpAfterDisclosure": "hung_up_after_disclosure"
+  },
+  "saferAlternatives": [
+    "Hang up and contact T-Mobile yourself through the T-Mobile app or the number on your bill. Never use a number or link the caller gives you.",
+    "Ask the caller for their Pinky Promise code and check it in the app. A real T-Mobile employee can give you one; a scammer can’t pass the check.",
+    "Never read out a one-time code or your account PIN. They’re for you to type in yourself.",
+    "No real company asks you to pay a fee with a gift card."
+  ],
+  "recoverySteps": [
+    "Contact T-Mobile right away through the app or the number on your bill. Say you may have shared a code or account details.",
+    "Change your account PIN or passcode, and ask about turning on number-transfer (port-out) protection.",
+    "Watch for a sudden loss of signal. If your phone shows “No service” unexpectedly, contact T-Mobile from another phone.",
+    "If you paid with a gift card, contact the card company right away using the number on the card. Keep the receipt. Report it at ReportFraud.ftc.gov."
+  ],
+  "recordingPools": []
+}

@@ -85,6 +85,43 @@ class AttemptDifference(CamelModel):
     direction: Literal['better', 'worse', 'same']
 
 
+class CueReport(CamelModel):
+    """Fraud-cue identification: which of the tactics the caller used the user flagged."""
+
+    encountered: list[str]
+    spotted: list[str]
+    missed: list[str]
+    # Taps on steps where the caller used no red flag.
+    extra_flags: int = 0
+
+
+class LearningOutcome(CamelModel):
+    id: str
+    title: str
+    description: str
+    # None when the call never reached the point where this could be practiced.
+    achieved: bool | None
+    detail: str
+
+
+# The same three outcomes for every scenario, shown before the call and assessed after it.
+LEARNING_OUTCOMES = [
+    ('spot_tactics', 'Spot the scam tactics', 'Notice the tricks a scammer uses, like urgency, fear or a too-good offer, and flag them with 🚩.'),
+    ('protect_info', 'Keep codes and personal details private', 'Don’t share one-time codes, PINs, personal details or payments with a caller.'),
+    ('verify_yourself', 'Check through an official channel', 'Say you’ll contact the company yourself, using its app or the number on your bill.'),
+]
+
+
+class OutcomeDefinition(CamelModel):
+    id: str
+    title: str
+    description: str
+
+
+def outcome_definitions() -> list[OutcomeDefinition]:
+    return [OutcomeDefinition(id=i, title=t, description=d) for i, t, d in LEARNING_OUTCOMES]
+
+
 class Debrief(CamelModel):
     scenario_title: str
     ending: ScenarioEnding
@@ -101,6 +138,8 @@ class Debrief(CamelModel):
     recording: RecordingClip | None = None
     used_model: bool = False
     comparison: list[AttemptDifference] = []
+    cues: CueReport | None = None
+    learning_outcomes: list[LearningOutcome] = []
 
 
 def key_behaviors(scenario: Scenario, s: SimulatorSession) -> KeyBehaviors:
@@ -165,6 +204,8 @@ def _timeline(scenario: Scenario, s: SimulatorSession) -> list[TimelineItem]:
                     rationale=option.rationale,
                 )
             )
+        elif e.type == 'red_flag_spotted':
+            items.append(TimelineItem(id=e.id, offset_ms=offset, label='Flagged a red flag 🚩', kind='info'))
         elif e.type == 'hint_requested':
             items.append(TimelineItem(id=e.id, offset_ms=offset, label='Asked for a training hint', kind='info'))
         elif e.type == 'call_ended' and e.ended_by == 'user_hang_up':
@@ -178,6 +219,62 @@ def _timeline(scenario: Scenario, s: SimulatorSession) -> list[TimelineItem]:
                 )
             )
     return items
+
+
+def cue_report(scenario: Scenario, s: SimulatorSession) -> CueReport:
+    encountered = [f for f in s.red_flags_seen if f in scenario.red_flags]
+    spotted: list[str] = []
+    extra = 0
+    for e in s.events:
+        if e.type != 'red_flag_spotted':
+            continue
+        node_flags = scenario.nodes[e.node_id].red_flags if e.node_id in scenario.nodes else []
+        if not node_flags:
+            extra += 1
+        spotted += [f for f in node_flags if f not in spotted]
+    spotted = [f for f in encountered if f in spotted]  # keep call order
+    return CueReport(
+        encountered=encountered,
+        spotted=spotted,
+        missed=[f for f in encountered if f not in spotted],
+        extra_flags=extra,
+    )
+
+
+def learning_outcomes(scenario: Scenario, k: KeyBehaviors, cues: CueReport) -> list[LearningOutcome]:
+    titles = {i: (t, d) for i, t, d in LEARNING_OUTCOMES}
+
+    def outcome(id_: str, achieved: bool | None, detail: str) -> LearningOutcome:
+        return LearningOutcome(id=id_, title=titles[id_][0], description=titles[id_][1], achieved=achieved, detail=detail)
+
+    if not k.answered:
+        skipped = 'You didn’t answer, so there was nothing to practice this time.'
+        return [outcome(i, None, skipped) for i, _, _ in LEARNING_OUTCOMES]
+
+    names = lambda ids: _join([scenario.red_flags[f].title.lower() for f in ids]) if ids else ''  # noqa: E731
+    n, got = len(cues.encountered), len(cues.spotted)
+    if n == 0:
+        spot = outcome('spot_tactics', None, 'The call ended before the caller used any tactics.')
+    elif got * 2 >= n:
+        spot = outcome('spot_tactics', True, f'You flagged {got} of {n} tactics the caller used.'
+                       + (f' Watch for: {names(cues.missed)}.' if cues.missed else ''))
+    elif got:
+        spot = outcome('spot_tactics', False, f'You flagged {got} of {n} tactics. You missed: {names(cues.missed)}.')
+    else:
+        spot = outcome('spot_tactics', False, f'You didn’t flag any of the {n} tactics. Next time, tap 🚩 when something feels off.')
+
+    if k.disclosed:
+        protect = outcome('protect_info', False, f'You shared {_join(k.disclosed)} (simulated). Real callers can use these to take over an account.')
+    elif k.protected_sensitive:
+        protect = outcome('protect_info', True, 'The caller asked for something sensitive, and you didn’t hand it over.')
+    else:
+        protect = outcome('protect_info', True, 'You didn’t share anything sensitive.')
+
+    if k.verified_independently:
+        verify = outcome('verify_yourself', True, 'You chose to check with the company yourself instead of trusting the caller.')
+    else:
+        verify = outcome('verify_yourself', False, 'Next time, say “I’ll check through the official app or the number on my bill,” then hang up.')
+    return [spot, protect, verify]
 
 
 def _join(items: list[str]) -> str:
@@ -219,6 +316,7 @@ def build_debrief(
     ending = scenario.endings[s.ending_id]
     timeline = _timeline(scenario, s)
     k = key_behaviors(scenario, s)
+    cues = cue_report(scenario, s)
     recording = next(
         (c for c in scenario.recordings if c.id in s.recording_ids.values()), None
     )
@@ -241,6 +339,8 @@ def build_debrief(
         recording=recording,
         used_model=any(t.source == 'model' for t in s.transcript),
         comparison=compare_attempts(scenario, previous, s) if previous else [],
+        cues=cues,
+        learning_outcomes=learning_outcomes(scenario, k, cues),
     )
 
 
@@ -266,6 +366,13 @@ def compare_attempts(
         diffs.append(AttemptDifference(
             text=f'You shared {"less" if fewer else "more"} than last time ({len(b.disclosed)} vs {len(a.disclosed)} items).',
             direction='better' if fewer else 'worse',
+        ))
+    ca, cb = cue_report(scenario, previous), cue_report(scenario, current)
+    if len(ca.spotted) != len(cb.spotted):
+        more = len(cb.spotted) > len(ca.spotted)
+        diffs.append(AttemptDifference(
+            text=f'Red flags you spotted: {len(ca.spotted)} → {len(cb.spotted)}.',
+            direction='better' if more else 'worse',
         ))
     if a.hints_used != b.hints_used:
         diffs.append(AttemptDifference(

@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { motion } from "motion/react";
 import { useState } from "react";
-import { AlertTriangle, ChevronDown, PhoneCall, Sparkles, ThumbsUp } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, Flag, PhoneCall, Sparkles, ThumbsUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Mascot, MascotBubble } from "@/components/safe/Mascot";
 import { ScoreRing } from "@/components/safe/ScoreRing";
@@ -27,12 +27,15 @@ function Results() {
   );
   const sc = scenarios.find((s) => s.id === r.difficulty);
   if (!sc) return null;
+  // Live calls carry what was actually said; the scripted demo falls back to the scenario script.
+  const lines = r.transcript ?? sc.script.map((l) => ({ who: l.who, text: l.text, ...(l.flag ? { flag: l.flag } : {}) }));
   const level = r.score < 34 ? { t: "Low risk", c: "var(--mint-foreground)", tr: "var(--mint)" } : r.score < 60 ? { t: "Moderate risk", c: "var(--peach-foreground)", tr: "var(--peach)" } : { t: "High risk", c: "var(--destructive)", tr: "var(--pink)" };
 
   return (
     <div className="space-y-6">
       <p role="status" className="rounded-xl bg-mint p-4 font-bold text-mint-foreground">This was a fake call — a safe scam simulation, not a real T-Mobile account call.</p>
       <h1 className="text-3xl font-black md:text-4xl">Nice work! Let's see how you did.</h1>
+      {r.outcomeTitle && <section className="rounded-3xl bg-card p-6 shadow-soft"><h2 className="text-lg font-black">{r.outcomeTitle}</h2>{r.outcomeSummary && <p className="mt-1 text-muted-foreground">{r.outcomeSummary}</p>}{r.aiCaller && <p className="mt-2 text-xs text-muted-foreground">The caller’s wording was written live by AI within the scenario’s fixed steps. Your score comes from the scenario’s safety rules, not from the AI.</p>}</section>}
       <section className="grid items-center gap-6 rounded-[2rem] bg-pink p-6 md:grid-cols-[auto_1fr] md:p-10">
         <ScoreRing value={r.score} size={220} stroke={20} color={level.c} track="var(--card)" label={`Vulnerability score ${r.score} of 100`}>
           <div><motion.p initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ delay: 0.5 }} className="text-6xl font-black">{r.score}</motion.p><p className="text-sm font-bold text-muted-foreground">vulnerability</p></div>
@@ -43,6 +46,26 @@ function Results() {
           <div className="mt-4"><MascotBubble mood={r.score < 34 ? "happy" : "loving"} size={80}>{r.score < 34 ? "You crushed it! Scammers don't stand a chance." : "Good instincts! A couple of tricks almost got you — let's train them."}</MascotBubble></div>
         </div>
       </section>
+
+      {r.outcomes && r.outcomes.length > 0 && (
+        <section className="rounded-3xl bg-card p-6 shadow-soft"><h2 className="flex items-center gap-2 text-lg font-black"><CheckCircle2 className="size-5" />What You Practiced</h2>
+          <ul className="mt-3 space-y-2">{r.outcomes.map((o) => (
+            <li key={o.title} className={cn("rounded-2xl px-4 py-2", o.achieved ? "bg-mint" : o.achieved === false ? "bg-peach" : "bg-muted")}>
+              <p className="font-semibold">{o.title} · {o.achieved ? "Done" : o.achieved === false ? "Practice next" : "Not practiced this time"}</p>
+              <p className="text-sm">{o.detail}</p>
+            </li>))}</ul></section>
+      )}
+
+      {r.cues && r.cues.spotted.length + r.cues.missed.length > 0 && (
+        <section className="rounded-3xl bg-card p-6 shadow-soft">
+          <h2 className="flex items-center gap-2 text-lg font-black"><Flag className="size-5" />Red Flags You Spotted · {r.cues.spotted.length} of {r.cues.spotted.length + r.cues.missed.length}</h2>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {r.cues.spotted.map((t) => <span key={t} className="flex items-center gap-1.5 rounded-full bg-primary px-4 py-2 text-sm font-bold text-primary-foreground"><Flag className="size-4" aria-hidden />{t}<span className="sr-only"> (spotted)</span></span>)}
+            {r.cues.missed.map((t) => <span key={t} className="rounded-full bg-muted px-4 py-2 text-sm font-bold text-muted-foreground">{t}<span className="sr-only"> (missed)</span></span>)}
+          </div>
+          <p className="mt-3 text-sm text-muted-foreground">{r.cues.missed.length ? "🚩 Highlighted: tactics you flagged. Grey: tactics to watch for next time." : "You flagged every tactic the caller used."}</p>
+        </section>
+      )}
 
       <div className="grid gap-4 md:grid-cols-2">
         <section className="rounded-3xl bg-mint p-6"><h2 className="flex items-center gap-2 text-lg font-black text-mint-foreground"><ThumbsUp className="size-5" />What You Did Well</h2>
@@ -62,10 +85,10 @@ function Results() {
 
       <section className="rounded-3xl bg-card shadow-soft">
         <button onClick={() => setOpen(!open)} aria-expanded={open} className="flex w-full items-center justify-between p-6 text-left text-lg font-black">Call transcript <ChevronDown className={cn("transition-transform", open && "rotate-180")} /></button>
-        {open && <div className="space-y-2 px-6 pb-6">{sc.script.map((l, i) => (
+        {open && <div className="space-y-2 px-6 pb-6">{lines.map((l, i) => (
           <div key={i} className={cn("rounded-2xl px-4 py-2 text-sm", l.flag ? "border-l-4 border-primary bg-pink" : "bg-muted")}>
-            <b>{l.who === "caller" ? "Caller" : "You"}:</b> {l.text}{l.flag && <span className="ml-2 rounded-full bg-primary px-2 py-0.5 text-xs font-bold text-primary-foreground">{l.flag}</span>}
-          </div>))}</div>}
+            {l.who === "system" ? <i>{l.text}</i> : <><b>{l.who === "caller" ? "Caller" : "You"}:</b> {l.text}</>}{l.flag && <span className="ml-2 rounded-full bg-primary px-2 py-0.5 text-xs font-bold text-primary-foreground">{l.flag}</span>}
+          </div>))}{r.transcriptFile && <p className="text-xs text-muted-foreground">Saved automatically as {r.transcriptFile.split("/").pop()}</p>}</div>}
       </section>
 
       <div className="flex flex-wrap gap-3">

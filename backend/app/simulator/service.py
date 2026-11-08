@@ -5,12 +5,15 @@ written to disk or logged with transcript content.
 """
 
 import asyncio
+import logging
+import os
 import secrets
 import time
 from collections import OrderedDict
+from pathlib import Path
 
 from . import engine
-from .debrief import Debrief, build_debrief
+from .debrief import Debrief, OutcomeDefinition, build_debrief, outcome_definitions
 from .dialogue import Dialogue, DialogueUnavailable, LineMode
 from .models import (
     CallerInfo,
@@ -27,6 +30,16 @@ from .scenarios import get_scenario, load_scenarios
 
 SESSION_TTL_S = 30 * 60
 MAX_SESSIONS = 1000
+
+log = logging.getLogger(__name__)
+
+BACKEND_ROOT = Path(__file__).resolve().parents[2]
+# Finished-call transcripts live with the project's other transcript data (backend/data/).
+DEFAULT_TRANSCRIPT_DIR = BACKEND_ROOT / 'data' / 'call_transcripts'
+
+
+def transcript_dir() -> Path:
+    return Path(os.environ.get('SCAM_COACH_TRANSCRIPT_DIR') or DEFAULT_TRANSCRIPT_DIR)
 
 
 class SessionNotFound(Exception):
@@ -50,6 +63,8 @@ class ScenarioSummary(CamelModel):
     caller: CallerInfo
     provenance: str | None
     has_recording: bool
+    # The learning outcomes practiced on every call, shown before it starts.
+    learning_outcomes: list[OutcomeDefinition]
 
 
 class OptionView(CamelModel):
@@ -78,6 +93,8 @@ class SessionView(CamelModel):
     answered_at_ms: int | None
     free_text_available: bool
     notice: str | None = None
+    # Where this call's transcript was saved (relative to backend/), once the call has ended.
+    transcript_file: str | None = None
 
 
 def summarize(sc: Scenario) -> ScenarioSummary:
@@ -91,6 +108,7 @@ def summarize(sc: Scenario) -> ScenarioSummary:
         caller=sc.caller,
         provenance=sc.provenance,
         has_recording=bool(sc.recordings),
+        learning_outcomes=outcome_definitions(),
     )
 
 
@@ -99,10 +117,12 @@ def _now() -> int:
 
 
 class SimulatorService:
-    def __init__(self, dialogue: Dialogue):
+    def __init__(self, dialogue: Dialogue, transcripts: Path | None = None):
         self.dialogue = dialogue
+        self.transcript_dir = transcripts or transcript_dir()
         self._sessions: OrderedDict[str, tuple[SimulatorSession, float]] = OrderedDict()
         self._locks: dict[str, asyncio.Lock] = {}
+        self._saved: dict[str, Path] = {}
 
     # ------------------------------------------------------------ storage
 
@@ -131,6 +151,30 @@ class SimulatorService:
     def _put(self, s: SimulatorSession) -> None:
         self._sessions[s.session_id] = (s, time.monotonic())
         self._sessions.move_to_end(s.session_id)
+        if s.status == 'ended' and s.session_id not in self._saved:
+            self._save_transcript(s)
+
+    def _save_transcript(self, s: SimulatorSession) -> Path | None:
+        """Writes the finished call's .txt transcript. A failure is logged, never fatal to the call."""
+        scenario = get_scenario(s.scenario_id)
+        assert scenario is not None
+        path = self.transcript_dir / transcript_filename(scenario, s, s.tz_offset_min)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            tmp = path.with_suffix('.txt.tmp')
+            tmp.write_text(format_transcript(scenario, s, s.tz_offset_min), encoding='utf-8')
+            tmp.replace(path)  # atomic, so readers never see a half-written file
+        except OSError as e:
+            log.warning('Could not save transcript for %s: %s', s.session_id, e)
+            return None
+        self._saved[s.session_id] = path
+        return path
+
+    def _relative(self, path: Path) -> str:
+        try:
+            return path.relative_to(BACKEND_ROOT).as_posix()
+        except ValueError:
+            return path.as_posix()
 
     def _lock(self, sid: str) -> asyncio.Lock:
         return self._locks.setdefault(sid, asyncio.Lock())
@@ -169,6 +213,7 @@ class SimulatorService:
             answered_at_ms=s.answered_at_ms,
             free_text_available=self.dialogue.available and bool(node and node.accepts_speech),
             notice=notice,
+            transcript_file=self._relative(self._saved[s.session_id]) if s.session_id in self._saved else None,
         )
 
     # ------------------------------------------------------------ dialogue helper
@@ -192,7 +237,9 @@ class SimulatorService:
     def list_scenarios(self) -> list[ScenarioSummary]:
         return [summarize(sc) for sc in load_scenarios().values()]
 
-    def start(self, scenario_id: str, previous_session_id: str | None = None) -> SessionView:
+    def start(
+        self, scenario_id: str, previous_session_id: str | None = None, tz_offset_min: int | None = None
+    ) -> SessionView:
         scenario = get_scenario(scenario_id)
         if not scenario:
             raise SessionNotFound(scenario_id)
@@ -202,6 +249,7 @@ class SimulatorService:
         s = engine.create_session(
             scenario, _now(), f's{secrets.token_hex(8)}', engine.random_picker(avoid)
         )
+        s.tz_offset_min = tz_offset_min
         self._put(s)
         return self.view(scenario, s)
 
@@ -295,6 +343,13 @@ class SimulatorService:
         self._put(s)
         return self.view(scenario, s)
 
+    async def spot(self, sid: str) -> SessionView:
+        """User tapped 🚩 on the current step. Not under the lock: it must never wait on the model."""
+        scenario, s = self._get(sid)
+        s = engine.spot_red_flag(scenario, s, _now())
+        self._put(s)
+        return self.view(scenario, s)
+
     async def hint(self, sid: str) -> tuple[SessionView, str | None]:
         async with self._lock(sid):
             scenario, s = self._get(sid)
@@ -313,12 +368,12 @@ class SimulatorService:
                 previous = entry[0]
         return build_debrief(scenario, s, previous)
 
-    def transcript(self, sid: str, tz_offset_min: int | None = None) -> tuple[str, str]:
-        """(filename, text) for a finished call. Built on demand; never written to disk."""
-        scenario, s = self._get(sid)
+    def transcript(self, sid: str) -> tuple[str, str]:
+        """(filename, text) of a finished call, read from its saved .txt file."""
+        _, s = self._get(sid)
         if s.status != 'ended':
             raise InvalidAction('the call has not ended yet')
-        return (
-            transcript_filename(scenario, s, tz_offset_min),
-            format_transcript(scenario, s, tz_offset_min),
-        )
+        path = self._saved.get(sid) or self._save_transcript(s)
+        if path is None or not path.exists():
+            raise InvalidAction('the transcript could not be saved')
+        return path.name, path.read_text(encoding='utf-8')

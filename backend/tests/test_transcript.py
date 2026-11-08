@@ -70,23 +70,62 @@ def test_filename_and_timezone():
     sc, s = finished('account-security-sim-swap', [])
     name_utc = transcript_filename(sc, s, 0)
     name_ny = transcript_filename(sc, s, 300)  # UTC-5
-    assert name_utc.startswith('scam-coach_account-security-sim-swap_') and name_utc.endswith('.txt')
+    assert name_utc.startswith('account_security_sim_swap_') and name_utc.endswith('_transcript.txt')
     assert name_utc != name_ny
     assert '(UTC-05:00)' in format_transcript(sc, s, 300)
     assert '(UTC)' in format_transcript(sc, s, 0)
 
 
-def test_transcript_endpoint():
-    app.state.simulator = SimulatorService(ScriptedDialogue())
+def test_finished_calls_are_saved_to_data_dir_without_a_download(tmp_path):
+    svc = SimulatorService(ScriptedDialogue(), transcripts=tmp_path)
+    app.state.simulator = svc
+    with TestClient(app) as http:
+        sid = http.post(
+            '/simulator/sessions', json={'scenarioId': 'account-security-sim-swap', 'tzOffsetMin': 300}
+        ).json()['sessionId']
+        v = http.post(f'/simulator/sessions/{sid}/answer').json()
+        assert v['transcriptFile'] is None and list(tmp_path.iterdir()) == []
+        assert http.get(f'/simulator/sessions/{sid}/transcript.txt').status_code == 409  # not ended yet
+
+        v = http.post(f'/simulator/sessions/{sid}/hangup').json()
+        files = list(tmp_path.iterdir())
+        assert len(files) == 1 and files[0].name.endswith('_transcript.txt')
+        assert files[0].name.startswith('account_security_sim_swap_')
+        assert v['transcriptFile'].endswith(files[0].name)
+        saved = files[0].read_text(encoding='utf-8')
+        assert '(You hung up)' in saved and '(UTC-05:00)' in saved
+
+        # The app reads the saved file back; no attachment / save dialog.
+        r = http.get(f'/simulator/sessions/{sid}/transcript.txt')
+        assert r.status_code == 200 and r.text == saved
+        assert r.headers['content-disposition'].startswith('inline;')
+        assert not list(tmp_path.glob('*.tmp'))
+        assert http.get('/simulator/sessions/nope/transcript.txt').status_code == 404
+
+
+def test_declined_and_scripted_endings_are_saved_too(tmp_path):
+    svc = SimulatorService(ScriptedDialogue(), transcripts=tmp_path)
+    app.state.simulator = svc
+    with TestClient(app) as http:
+        a = http.post('/simulator/sessions', json={'scenarioId': 'tmobile-loyalty-discount'}).json()['sessionId']
+        http.post(f'/simulator/sessions/{a}/decline')
+        b = http.post('/simulator/sessions', json={'scenarioId': 'tmobile-loyalty-discount'}).json()['sessionId']
+        http.post(f'/simulator/sessions/{b}/answer')
+        for o in ['intro_verify', 'disc_hold_firm']:
+            v = http.post(f'/simulator/sessions/{b}/choose', json={'optionId': o}).json()
+        assert v['status'] == 'ended' and v['transcriptFile']
+    assert len(list(tmp_path.glob('tmobile_loyalty_discount_*_transcript.txt'))) == 2
+
+
+def test_unwritable_transcript_dir_does_not_break_the_call(tmp_path):
+    blocker = tmp_path / 'not_a_dir'
+    blocker.write_text('x')
+    svc = SimulatorService(ScriptedDialogue(), transcripts=blocker / 'sub')
+    app.state.simulator = svc
     with TestClient(app) as http:
         sid = http.post('/simulator/sessions', json={'scenarioId': 'account-security-sim-swap'}).json()['sessionId']
         http.post(f'/simulator/sessions/{sid}/answer')
-        assert http.get(f'/simulator/sessions/{sid}/transcript.txt').status_code == 409  # not ended yet
-        http.post(f'/simulator/sessions/{sid}/hangup')
-        r = http.get(f'/simulator/sessions/{sid}/transcript.txt', params={'tzOffsetMin': 300})
-        assert r.status_code == 200
-        assert r.headers['content-type'].startswith('text/plain')
-        assert r.headers['cache-control'] == 'no-store'
-        assert 'attachment; filename="scam-coach_account-security-sim-swap_' in r.headers['content-disposition']
-        assert '(You hung up)' in r.text
-        assert http.get('/simulator/sessions/nope/transcript.txt').status_code == 404
+        v = http.post(f'/simulator/sessions/{sid}/hangup').json()
+        assert v['status'] == 'ended' and v['transcriptFile'] is None
+        assert http.get(f'/simulator/sessions/{sid}/debrief').status_code == 200
+        assert http.get(f'/simulator/sessions/{sid}/transcript.txt').status_code == 409
