@@ -1,6 +1,6 @@
 import { Link, useLocation, useNavigate } from "@tanstack/react-router";
 import { AnimatePresence, motion } from "motion/react";
-import { TrendingUp, Home, LayoutDashboard, Menu, PhoneCall, ShieldCheck, User, Users } from "lucide-react";
+import { TrendingUp, Home, LayoutDashboard, Menu, PhoneCall, ShieldCheck, User, Users, BarChart3 } from "lucide-react";
 import { useEffect } from "react";
 import { hydrateDemo, useDemo } from "@/lib/store";
 import { Button } from "@/components/ui/button";
@@ -18,6 +18,7 @@ const customerNav = [
 const employeeNav = [
   { to: "/employee", label: "Analysts board", icon: LayoutDashboard },
   { to: "/employee/verify", label: "Caller codes", icon: ShieldCheck },
+  { to: "/employer-dashboard", label: "Analytics", icon: BarChart3 },
 ] as const;
 
 export function Brand() {
@@ -53,7 +54,7 @@ function RoleSwitch({ employee }: { employee: boolean }) {
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { pathname } = useLocation();
   useEffect(() => hydrateDemo(), []);
-  const employee = pathname.startsWith("/employee");
+  const employee = pathname.startsWith("/employee") || pathname.startsWith("/employer-dashboard");
   const nav = employee ? employeeNav : customerNav;
   const isActive = (to: string) => (to === "/" || to === "/employee" ? pathname === to : pathname.startsWith(to));
 

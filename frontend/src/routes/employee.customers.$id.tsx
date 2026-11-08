@@ -7,7 +7,6 @@ import { riskTone, useCustomers } from "@/lib/use-customers";
 import { cn } from "@/lib/utils";
 
 export const Route = createFileRoute("/employee/customers/$id")({
-  loader: ({ params }) => { if (!customers.some((c) => c.id === params.id)) throw notFound(); return null; },
   head: () => ({ meta: [{ title: "Customer Risk Insights — Pinky Promise" }, { name: "description", content: "Vulnerability trends, tactic susceptibility and recommended interventions." }, { property: "og:title", content: "Customer Risk Insights — Pinky Promise" }, { property: "og:description", content: "Vulnerability trends, tactic susceptibility and recommended interventions." }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary" }] }),
   component: Insights,
 });

@@ -6,6 +6,7 @@
  * Swap implementations here without touching the UI.
  */
 import { setDemo, type SimResult } from "./store";
+import type { SimulationRecord } from "./csv-analytics";
 import { CURRENT_CUSTOMER_ID, customers, scenarios, type Difficulty } from "./mock-data";
 
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -68,10 +69,49 @@ export const simulationService = {
         ? ["You started looking for the code under time pressure", "Fear of losing bank access made you hesitate"]
         : ["You engaged with the offer before questioning it", "Official-sounding names lowered your guard"],
     };
-    setDemo((s) => ({
-      ...s, lastResult: result, callHistory: [...s.callHistory, result], simulations: s.simulations + 1,
-      vulnerability: Math.round((s.vulnerability + result.score) / 2),
-    }));
+    setDemo((s) => {
+      const nextSims = s.simulations + 1;
+      const nextVuln = Math.round((s.vulnerability + result.score) / 2);
+      const scamType = difficulty === "beginner" ? "rewards_scam" : difficulty === "intermediate" ? "tmobile_phishing" : "account_security";
+      const flags = tactics.map((t) => t.toLowerCase().replace(/[^a-z0-9]+/g, "_"));
+      const isResisted = result.score < 60;
+
+      const newRecord: SimulationRecord = {
+        userId: "fake-user-001",
+        timestamp: new Date().toISOString(),
+        scamType,
+        redFlags: flags.length > 0 ? flags : ["urgency", "authority"],
+        vulnerabilityScore: nextVuln,
+        employeeSummary: isResisted
+          ? "Alex recognized scam patterns during the simulation and refused to share sensitive verification details."
+          : "Alex showed elevated susceptibility to urgency pressure and hesitated before verifying official channels.",
+        employeeName: "Alex Rivera",
+        department: "Customer Support",
+        scenario: sc.title,
+        durationSeconds: 160,
+        outcome: isResisted ? "resisted" : "compromised",
+      };
+
+      const existingIndex = (s.csvRecords || []).findIndex(
+        (r) => r.userId === "fake-user-001" || r.employeeName === "Alex Rivera"
+      );
+      let updatedCsv: SimulationRecord[];
+      if (existingIndex >= 0) {
+        updatedCsv = [...s.csvRecords];
+        updatedCsv[existingIndex] = newRecord;
+      } else {
+        updatedCsv = [newRecord, ...(s.csvRecords || [])];
+      }
+
+      return {
+        ...s,
+        lastResult: result,
+        callHistory: [...s.callHistory, result],
+        simulations: nextSims,
+        vulnerability: nextVuln,
+        csvRecords: updatedCsv,
+      };
+    });
     return result;
   },
 };

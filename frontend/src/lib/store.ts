@@ -5,6 +5,8 @@
  */
 import { useSyncExternalStore } from "react";
 import type { Difficulty } from "./mock-data";
+import { parseCsv, recordsToCsv, type SimulationRecord } from "./csv-analytics";
+import csvRaw from "@/data/fake_analysis.csv?raw";
 
 export type VerifyStatus = "idle" | "pending" | "verified" | "expired" | "cancelled";
 
@@ -39,9 +41,18 @@ export interface DemoState {
   vulnerability: number;
   streak: number;
   completedTasks: string[];
+  csvRecords: SimulationRecord[];
 }
 
 const KEY = "safesignal-demo-v1";
+const FINGERPRINT_KEY = "safesignal-csv-fingerprint-v1";
+const CSV_FINGERPRINT = `${csvRaw.length}:${csvRaw.slice(0, 30)}:${csvRaw.slice(-30)}`;
+
+export const initialCsvRecords: SimulationRecord[] = parseCsv(csvRaw);
+const alexInitialRecord = initialCsvRecords.find(
+  (r) => r.userId === "fake-user-001" || r.employeeName === "Alex Rivera"
+);
+
 export const initialState: DemoState = {
   biweeklyOptIn: false,
   biweeklyConsentAt: null,
@@ -49,9 +60,10 @@ export const initialState: DemoState = {
   verification: null,
   lastResult: null,
   simulations: 3,
-  vulnerability: 46,
+  vulnerability: alexInitialRecord ? alexInitialRecord.vulnerabilityScore : 46,
   streak: 4,
   completedTasks: ["verify-agent", "never-otp"],
+  csvRecords: initialCsvRecords,
 };
 
 let state: DemoState = initialState;
@@ -65,7 +77,47 @@ export function setDemo(updater: (s: DemoState) => DemoState) {
 }
 
 export function resetDemo() {
-  setDemo(() => initialState);
+  setDemo(() => ({
+    ...initialState,
+    csvRecords: parseCsv(csvRaw),
+  }));
+}
+
+export function addOrUpdateCsvRecord(record: SimulationRecord) {
+  setDemo((s) => {
+    const isAlex = record.userId === "fake-user-001" || record.employeeName === "Alex Rivera";
+    const existingIndex = s.csvRecords.findIndex(
+      (r) => r.userId === record.userId || (isAlex && r.employeeName === "Alex Rivera")
+    );
+    let newRecords: SimulationRecord[];
+    if (existingIndex >= 0) {
+      newRecords = [...s.csvRecords];
+      newRecords[existingIndex] = record;
+    } else {
+      newRecords = [record, ...s.csvRecords];
+    }
+    return {
+      ...s,
+      csvRecords: newRecords,
+      vulnerability: isAlex ? record.vulnerabilityScore : s.vulnerability,
+      simulations: isAlex ? s.simulations + 1 : s.simulations,
+    };
+  });
+}
+
+export function updateCsvRecords(records: SimulationRecord[]) {
+  setDemo((s) => {
+    const alex = records.find((r) => r.userId === "fake-user-001" || r.employeeName === "Alex Rivera");
+    return {
+      ...s,
+      csvRecords: records,
+      vulnerability: alex ? alex.vulnerabilityScore : s.vulnerability,
+    };
+  });
+}
+
+export function exportCsvString(): string {
+  return recordsToCsv(state.csvRecords);
 }
 
 let hydrated = false;
@@ -74,15 +126,47 @@ export function hydrateDemo() {
   hydrated = true;
   try {
     const raw = localStorage.getItem(KEY);
-    if (raw) state = { ...initialState, ...JSON.parse(raw) };
-  } catch { /* ignore */ }
+    const storedFp = localStorage.getItem(FINGERPRINT_KEY);
+    const csvChanged = storedFp !== CSV_FINGERPRINT;
+
+    if (raw && !csvChanged) {
+      const parsed = JSON.parse(raw);
+      const csvRecs: SimulationRecord[] =
+        parsed.csvRecords && parsed.csvRecords.length > 0 ? parsed.csvRecords : initialCsvRecords;
+      const alex = csvRecs.find(
+        (r) => r.userId === "fake-user-001" || r.employeeName === "Alex Rivera"
+      );
+      state = {
+        ...initialState,
+        ...parsed,
+        csvRecords: csvRecs,
+        vulnerability: alex ? alex.vulnerabilityScore : (parsed.vulnerability ?? initialState.vulnerability),
+      };
+    } else {
+      localStorage.setItem(FINGERPRINT_KEY, CSV_FINGERPRINT);
+      state = {
+        ...initialState,
+        csvRecords: initialCsvRecords,
+        vulnerability: alexInitialRecord ? alexInitialRecord.vulnerabilityScore : 46,
+      };
+      localStorage.setItem(KEY, JSON.stringify(state));
+    }
+  } catch {
+    /* ignore */
+  }
   window.addEventListener("storage", (e) => {
-    if (e.key === KEY && e.newValue) { state = JSON.parse(e.newValue); emit(); }
+    if (e.key === KEY && e.newValue) {
+      state = JSON.parse(e.newValue);
+      emit();
+    }
   });
   emit();
 }
 
-function subscribe(l: () => void) { listeners.add(l); return () => listeners.delete(l); }
+function subscribe(l: () => void) {
+  listeners.add(l);
+  return () => listeners.delete(l);
+}
 
 export function useDemo(): DemoState {
   return useSyncExternalStore(subscribe, () => state, () => initialState);

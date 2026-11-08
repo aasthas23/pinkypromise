@@ -19,11 +19,12 @@ export const Route = createFileRoute("/employee/")({
 
 function Overview() {
   const list = useCustomers();
-  const { verification, biweeklyOptIn, callHistory } = useDemo();
+  const { verification, biweeklyOptIn, callHistory, csvRecords } = useDemo();
   const tactics = tacticAnalytics(list);
-  const startAvg = Math.round(list.reduce((a, c) => a + (c.trend[0] ?? c.vulnerability), 0) / list.length);
-  const avg = Math.round(list.reduce((a, c) => a + c.vulnerability, 0) / list.length);
-  const sims = list.reduce((a, c) => a + c.simulations, 0);
+  const totalCalls = csvRecords?.length || list.length;
+  const startAvg = Math.round(list.reduce((a, c) => a + (c.trend[0] ?? c.vulnerability), 0) / Math.max(1, list.length));
+  const avg = Math.round(list.reduce((a, c) => a + c.vulnerability, 0) / Math.max(1, list.length));
+  const sims = totalCalls;
   const need = list.filter((c) => c.vulnerability >= 60).length;
   const kpis = [
     { l: "Customers tracked", v: list.length, i: Users },
@@ -51,7 +52,7 @@ function Overview() {
       <div className="flex flex-wrap items-center justify-between gap-4 rounded-xl border border-mint-foreground/10 bg-mint/65 p-4"><p className="flex items-center gap-2 font-bold text-mint-foreground"><TrendingDown className="size-5" />Vulnerability down {startAvg - avg} points from first calls</p><Button asChild variant="soft" size="sm"><Link to="/employee/verify"><ShieldCheck />Issue caller code</Link></Button></div>
       <AnalystCharts customers={list} />
       <MascotBubble mood="think" size={65}>{tactics[0]?.tactic ?? "Urgency"} is the biggest focus area. Let’s help customers build stronger instincts.</MascotBubble>
-      <section className="grid grid-cols-1 gap-3"><div className="rounded-xl bg-mint p-5"><h2 className="font-black text-mint-foreground">Biweekly call consent</h2><p className="mt-2">Alex Rivera · {biweeklyOptIn ? "Opted in" : "Opted out"}</p></div><div className="rounded-xl bg-peach p-5"><h2 className="font-black text-peach-foreground">New simulation data</h2><p className="mt-2">{callHistory.length} calls · {callHistory.filter((r) => r.source === "biweekly").length} biweekly previews</p></div></section>
+      <section className="grid grid-cols-1 gap-3"><div className="rounded-xl bg-mint p-5"><h2 className="font-black text-mint-foreground">Biweekly call consent</h2><p className="mt-2">Alex Rivera · {biweeklyOptIn ? "Opted in" : "Opted out"}</p></div><div className="rounded-xl bg-peach p-5"><h2 className="font-black text-peach-foreground">New simulation data</h2><p className="mt-2">{totalCalls} calls · {callHistory.filter((r) => r.source === "biweekly").length} biweekly previews</p></div></section>
       <p className="text-xs text-muted-foreground">Sample customers and illustrative scripted scores. No real call behavior is collected.</p>
       <section className="chart-surface overflow-hidden">
         <h2 className="p-5 text-lg font-black">Customers</h2>
