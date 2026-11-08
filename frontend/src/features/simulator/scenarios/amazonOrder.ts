@@ -1,0 +1,385 @@
+import { recordingClips } from '../recordings/catalog';
+import type { Scenario } from '../types';
+import { robocallRedFlags } from './robocallFlags';
+
+/**
+ * "Suspicious Amazon order" robocall. The opener is one of several real
+ * recordings (FTC Project Point of No Entry, via the Robocall Audio Dataset),
+ * picked at random each attempt. After "press 1", the live agent is scripted
+ * from widely reported patterns for this scam (remote access, then gift cards).
+ * That part is not from a recording.
+ */
+export const amazonOrderScenario: Scenario = {
+  id: 'amazon-suspicious-order',
+  title: 'Suspicious order robocall',
+  description:
+    'A recorded message says someone placed an expensive order on your Amazon account and asks you to press 1. This opens with a real robocall recording.',
+  difficulty: 'beginner',
+  estimatedMinutes: 3,
+  learningObjectives: [
+    'Recognize a pre-recorded “press 1” message as a scam opener',
+    'Check orders yourself in the official app instead of through the caller',
+    'Never install remote-access software or pay with gift cards for a caller',
+  ],
+  caller: {
+    displayName: 'Unknown caller',
+    displayNumber: '(512) 555-0187',
+    agentName: 'Kevin',
+    voice: { pitch: 0.9, rate: 1.0 },
+  },
+  recordings: recordingClips.filter((c) => c.pool === 'amazon_order'),
+  provenance:
+    'The opening message is a real robocall recording collected by the FTC (Project Point of No Entry). What happens after you press a key is a scripted re-creation of commonly reported tactics. The agent, numbers and order details are fictional.',
+  startNodeId: 'robocall',
+
+  nodes: {
+    robocall: {
+      kind: 'dialogue',
+      id: 'robocall',
+      phase: 'intro',
+      recordingPool: 'amazon_order',
+      callerLines: [],
+      redFlags: ['prerecorded_message', 'unsolicited_contact', 'fear_of_loss', 'press_one'],
+      hint: 'This is a recording. If you’re worried about an order, where could you check it without this call?',
+      options: [
+        {
+          id: 'robo_press1',
+          keypad: '1',
+          label: 'Press 1 to speak to a representative',
+          behavior: 'comply',
+          next: 'agent_intro',
+          rationale:
+            'Pressing 1 connects you to a live scammer and confirms your number is active. It’s an easy step to take when you’re worried about a charge.',
+        },
+        {
+          id: 'robo_press2',
+          keypad: '2',
+          label: 'Press 2',
+          behavior: 'comply',
+          next: 'agent_intro',
+          rationale:
+            'On scam robocalls, every option usually reaches the same scammer. The menu is there to make it feel official.',
+        },
+        {
+          id: 'robo_check_app',
+          label: 'Hang up and check my orders in the Amazon app myself.',
+          behavior: 'verify',
+          next: 'end_verified_silent',
+          events: ['independent_verification_requested'],
+          rationale:
+            'Checking your orders in the official app or website, which you open yourself, settles the question without talking to the caller at all.',
+        },
+      ],
+    },
+
+    agent_intro: {
+      kind: 'dialogue',
+      id: 'agent_intro',
+      phase: 'authority_claim',
+      callerLines: [
+        'Thank you for calling Amazon security department, my name is Kevin. I see the order flagged on your account.',
+        'To pull it up, can you confirm the email address on your Amazon account?',
+      ],
+      redFlags: ['authority_claim', 'personal_info_request'],
+      hint: 'They called you about your account. Why would they need you to tell them who you are?',
+      options: [
+        {
+          id: 'intro_give_email',
+          label: 'Sure, it’s [simulated email address].',
+          behavior: 'comply',
+          next: 'remote_access',
+          events: ['dummy_personal_info_disclosed'],
+          rationale:
+            'Confirming your email helps a scammer target your account and makes their next steps sound more believable.',
+        },
+        {
+          id: 'intro_challenge',
+          label: 'You called me. What order is it, and what’s my name?',
+          behavior: 'challenge',
+          next: 'dodge',
+          events: ['caller_challenged'],
+          rationale:
+            'Asking the caller to prove what they know, instead of you proving who you are, turns the pressure around.',
+        },
+        {
+          id: 'intro_verify',
+          label: 'I’ll check my orders in the app myself.',
+          behavior: 'verify',
+          next: 'discourage',
+          events: ['independent_verification_requested'],
+          rationale: 'Checking the order in the official app you open yourself is the most reliable step.',
+        },
+      ],
+    },
+
+    dodge: {
+      kind: 'dialogue',
+      id: 'dodge',
+      phase: 'authority_claim',
+      callerLines: [
+        'For security I can’t read your details out, sir or ma’am. It’s an iPhone, fourteen ninety-nine, shipping to Texas.',
+        'If you don’t want it charged, we must secure the account right now.',
+      ],
+      redFlags: ['artificial_urgency'],
+      hint: 'Did they answer your question, or change the subject to urgency?',
+      options: [
+        {
+          id: 'dodge_continue',
+          label: 'Okay, what do I need to do?',
+          behavior: 'neutral',
+          next: 'remote_access',
+          rationale:
+            'The caller dodged your question and moved to urgency. That dodge is worth noticing.',
+        },
+        {
+          id: 'dodge_verify',
+          label: 'Then I’ll check it in the Amazon app myself.',
+          behavior: 'verify',
+          next: 'discourage',
+          events: ['independent_verification_requested'],
+          rationale: 'When a caller dodges, switching to a channel you control is the right move.',
+        },
+      ],
+    },
+
+    remote_access: {
+      kind: 'dialogue',
+      id: 'remote_access',
+      phase: 'urgency',
+      callerLines: [
+        'Your account is compromised, so the hacker can still place orders. I need to block them from our side.',
+        'Please go to your computer. I’ll guide you to install our secure support app so I can remove the hacker.',
+      ],
+      redFlags: ['remote_access_request', 'fear_of_loss'],
+      hint: 'What could a stranger do if they could see and control your computer?',
+      options: [
+        {
+          id: 'ra_allow',
+          label: 'Okay, I’m installing it. [simulated]',
+          behavior: 'comply',
+          next: 'gift_cards',
+          events: ['simulated_remote_access_allowed'],
+          rationale:
+            'Remote-access apps let the caller see your screen, including bank sites and saved passwords. Real support teams don’t cold-call to install them.',
+        },
+        {
+          id: 'ra_refuse',
+          label: 'I’m not installing anything.',
+          behavior: 'refuse',
+          next: 'pressure',
+          events: ['sensitive_information_refused'],
+          rationale: 'Refusing to let a caller control your device is protective.',
+        },
+        {
+          id: 'ra_verify',
+          label: 'I’ll log in to Amazon myself and check.',
+          behavior: 'verify',
+          next: 'discourage',
+          events: ['independent_verification_requested'],
+          rationale: 'Logging in yourself, through the app or a site you type in, is the safest check.',
+        },
+      ],
+    },
+
+    discourage: {
+      kind: 'dialogue',
+      id: 'discourage',
+      phase: 'urgency',
+      callerLines: [
+        'No no, please don’t log in right now. The hacker is active, they will see it and change your password.',
+        'Stay on the line with me. I am the only one who can stop this order.',
+      ],
+      redFlags: ['discouraging_verification', 'artificial_urgency'],
+      hint: 'Why would a real company tell you not to use its own app?',
+      options: [
+        {
+          id: 'disc_give_in',
+          label: 'Okay, I’ll stay on the line.',
+          behavior: 'neutral',
+          next: 'remote_access',
+          rationale:
+            'The caller made checking sound dangerous. Talking you out of verifying is one of the strongest warning signs.',
+        },
+        {
+          id: 'disc_hold_firm',
+          label: 'I’m hanging up and checking myself.',
+          behavior: 'verify',
+          next: 'end_verified',
+          events: ['independent_verification_requested'],
+          rationale: 'Holding firm under pressure and checking for yourself is the safest way to end this call.',
+        },
+      ],
+    },
+
+    pressure: {
+      kind: 'dialogue',
+      id: 'pressure',
+      phase: 'simulated_sensitive_request',
+      callerLines: [
+        'If you don’t let me secure it, the fourteen ninety-nine will be charged and Amazon cannot refund it.',
+        'I am trying to help you here. It only takes two minutes.',
+      ],
+      redFlags: ['artificial_urgency', 'fear_of_loss'],
+      hint: 'If the order were real, could you cancel it yourself in the app?',
+      options: [
+        {
+          id: 'pr_give_in',
+          label: 'Fine, I’ll install it. [simulated]',
+          behavior: 'comply',
+          next: 'gift_cards',
+          events: ['simulated_remote_access_allowed'],
+          rationale:
+            'Giving in under pressure is very common, and it isn’t a personal failing. Recognizing the pressure is what helps you hold firm next time.',
+        },
+        {
+          id: 'pr_refuse',
+          label: 'No. Goodbye.',
+          behavior: 'refuse',
+          next: 'end_refused',
+          rationale: 'Refusing and leaving the call protected you.',
+        },
+      ],
+    },
+
+    gift_cards: {
+      kind: 'dialogue',
+      id: 'gift_cards',
+      phase: 'simulated_sensitive_request',
+      callerLines: [
+        'Okay, I see the hacker on your account. To reverse the charge, our system needs a security deposit.',
+        'Go to the store and buy five hundred dollars in gift cards, then read me the numbers on the back. Don’t tell the cashier what it’s for. It’s a confidential investigation.',
+      ],
+      redFlags: ['gift_card_payment', 'secrecy_demand', 'escalating_requests'],
+      hint: 'Would a real company ever ask you to pay with gift cards?',
+      options: [
+        {
+          id: 'gc_pay',
+          label: 'Okay. The card number is [simulated gift card number].',
+          behavior: 'comply',
+          next: 'end_exposed',
+          events: ['simulated_payment_made'],
+          rationale:
+            'Money sent by gift card is very hard to recover. Any request to pay or “secure” money with gift cards is a scam.',
+        },
+        {
+          id: 'gc_refuse',
+          label: 'Amazon would never ask for gift cards. I’m hanging up.',
+          behavior: 'refuse',
+          next: 'end_refused',
+          events: ['sensitive_information_refused'],
+          rationale:
+            'Exactly right. Spotting the gift card request and leaving is a real recovery, even after earlier steps.',
+        },
+      ],
+    },
+
+    end_verified_silent: {
+      kind: 'ending',
+      id: 'end_verified_silent',
+      phase: 'resolution',
+      endingId: 'verified_before_engaging',
+      callerLines: [],
+    },
+    end_verified: {
+      kind: 'ending',
+      id: 'end_verified',
+      phase: 'resolution',
+      endingId: 'verified',
+      endingIdIfDisclosed: 'recovered',
+      callerLines: ['Hello? Sir? Ma’am? …'],
+    },
+    end_refused: {
+      kind: 'ending',
+      id: 'end_refused',
+      phase: 'resolution',
+      endingId: 'refused',
+      endingIdIfDisclosed: 'recovered',
+      callerLines: ['You will lose your money then. Don’t call us back.'],
+    },
+    end_exposed: {
+      kind: 'ending',
+      id: 'end_exposed',
+      phase: 'resolution',
+      endingId: 'exposed',
+      callerLines: ['Thank you. The order is cancelled. Please stay off your computer for twenty-four hours while we finish.'],
+    },
+  },
+
+  redFlags: robocallRedFlags,
+
+  endings: {
+    verified_before_engaging: {
+      id: 'verified_before_engaging',
+      title: 'You hung up and checked for yourself',
+      outcome: 'protected',
+      summary:
+        'You didn’t press anything. You went straight to the official app to check your orders. That’s the safest response to a robocall like this.',
+    },
+    verified: {
+      id: 'verified',
+      title: 'You chose to verify independently',
+      outcome: 'protected',
+      summary: 'You ended the call to check your account yourself. Nothing was shared.',
+    },
+    refused: {
+      id: 'refused',
+      title: 'You refused and ended the call',
+      outcome: 'protected',
+      summary: 'You didn’t give the caller anything and you left the conversation.',
+    },
+    hung_up: {
+      id: 'hung_up',
+      title: 'You hung up',
+      outcome: 'protected',
+      summary: 'You ended the call before sharing anything.',
+    },
+    declined: {
+      id: 'declined',
+      title: 'You declined the call',
+      outcome: 'not_engaged',
+      summary:
+        'Not answering an unknown number is a reasonable habit. Try answering next time to practice what happens when you pick up.',
+    },
+    recovered: {
+      id: 'recovered',
+      title: 'You stopped partway through',
+      outcome: 'recovered',
+      summary:
+        'You gave the caller some of what they asked for, then recognized the scam and ended the call before giving more.',
+    },
+    hung_up_after_disclosure: {
+      id: 'hung_up_after_disclosure',
+      title: 'You hung up after sharing something',
+      outcome: 'recovered',
+      summary:
+        'You ended the call, but only after sharing simulated information or access. Leaving was the right call. In real life, follow up quickly.',
+    },
+    exposed: {
+      id: 'exposed',
+      title: 'The caller got what they asked for',
+      outcome: 'exposed',
+      summary:
+        'In a real call, the scammer would now have access to your computer and the gift card money, which is very hard to get back. This was only practice. The point is to recognize the tactics next time.',
+    },
+  },
+
+  controlEndings: {
+    declined: 'declined',
+    hungUpSafe: 'hung_up',
+    hungUpAfterDisclosure: 'hung_up_after_disclosure',
+  },
+
+  saferAlternatives: [
+    'Hang up on recorded messages about your accounts. Don’t press any keys.',
+    'Check orders and charges yourself in the official app or a website you type in. Never use a link or number the caller gives you.',
+    'Never install software or give remote access because someone called you.',
+    'Never pay anyone with gift cards because of a phone call.',
+  ],
+
+  recoverySteps: [
+    'If you gave remote access, disconnect from the internet, uninstall the app, and have the device checked.',
+    'From a different device, change passwords for your email, bank and shopping accounts, and turn on two-step verification.',
+    'If you paid with gift cards, contact the gift card company right away using the number on the card or its official site. Keep the receipts.',
+    'Report it at ReportFraud.ftc.gov.',
+  ],
+};
