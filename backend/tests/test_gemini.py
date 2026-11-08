@@ -13,7 +13,7 @@ from app.main import app
 from app.simulator.live import conversation, speech as speech_mod
 from app.simulator.live.conversation import LLMUnavailable, NoCaller
 from app.simulator.live.gemini_llm import GeminiCaller, to_gemini_contents
-from app.simulator.live.gemini_speech import GeminiSpeech, pcm_to_wav
+from app.simulator.live.gemini_speech import GeminiSpeech, pcm_to_wav, plausible_length
 from app.simulator.live.service import LiveService
 from app.simulator.live.speech import NoSpeech, SpeechError
 
@@ -145,7 +145,8 @@ def test_tts_returns_playable_wav():
     wav = asyncio.run(run())
     assert wav[:4] == b'RIFF' and wav[8:12] == b'WAVE' and len(wav) == 44 + 480
     path, body, _ = mock.requests[0]
-    assert path.endswith('/models/gemini-3.8-flash-lite-tts:generateContent')
+    assert path.endswith('/models/gemini-3.8-flash-tts:generateContent')
+    assert body['contents'][0]['parts'][0]['text'] == 'Hello there.'  # only the line is spoken
     assert body['generationConfig']['speechConfig']['voiceConfig']['prebuiltVoiceConfig']['voiceName'] == 'Kore'
     assert pcm_to_wav(b'\x00' * 10)[24:28] == (24000).to_bytes(4, 'little')
 
@@ -186,3 +187,68 @@ def test_full_spoken_call_on_gemini_only(tmp_path):
     assert {'text': '', 'thoughtSignature': 'sig-abc'} in second_reply['contents'][1]['parts']  # sent back verbatim
     assert d['outcome'] == 'protected' and 'Google gemini-3.5-flash-lite' in d['provenance']
     assert 'written live by AI (Google gemini-3.5-flash-lite)' in next(tmp_path.glob('*_transcript.txt')).read_text()
+
+
+def tts_mock(by_model: dict):
+    """by_model: model name -> (status, pcm bytes or None). Records the order models were tried."""
+    tried = []
+
+    def handler(request):
+        model = request.url.path.split('/models/')[1].split(':')[0]
+        tried.append(model)
+        status, pcm = by_model.get(model, (404, None))
+        if status != 200:
+            err = {'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '30s'}]} if status == 429 else {}
+            return httpx.Response(status, json={'error': err})
+        return httpx.Response(200, json={'candidates': [{'content': {'parts': [
+            {'inlineData': {'mimeType': 'audio/L16;codec=pcm;rate=24000', 'data': base64.b64encode(pcm).decode()}}]}}]})
+
+    return tried, httpx.AsyncClient(base_url='https://gemini.test/v1beta', transport=httpx.MockTransport(handler))
+
+
+def say(sp, text='Hi, this is Dana with T-Mobile Rewards.'):
+    async def run():
+        return b''.join([c async for c in sp.synthesize(text, 'Warm and friendly.')])
+    return asyncio.run(run())
+
+
+def test_rate_limited_voice_model_falls_through_to_the_next_human_voice(monkeypatch):
+    monkeypatch.delenv('SCAM_COACH_GEMINI_TTS_MODEL', raising=False)
+    monkeypatch.delenv('SCAM_COACH_GEMINI_TTS_MODELS', raising=False)
+    ok = b'\x00\x01' * 24000  # 1 s
+    tried, c = tts_mock({'gemini-3.8-flash-tts': (429, None), 'gemini-3.8-flash-lite-tts': (429, None),
+                         'gemini-3.1-flash-tts-preview': (200, ok)})
+    sp = GeminiSpeech(c)
+    assert say(sp)[:4] == b'RIFF'
+    assert tried == ['gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts', 'gemini-3.1-flash-tts-preview']
+    # The limited models rest (RetryInfo said 30 s), so the next line goes straight to the working one.
+    tried.clear()
+    say(sp)
+    assert tried == ['gemini-3.1-flash-tts-preview']
+
+
+def test_every_voice_model_limited_raises_so_the_app_can_show_captions(monkeypatch):
+    monkeypatch.delenv('SCAM_COACH_GEMINI_TTS_MODELS', raising=False)
+    tried, c = tts_mock({m: (429, None) for m in ('gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts',
+                                                   'gemini-3.1-flash-tts-preview', 'gemini-2.5-flash-preview-tts')})
+    with pytest.raises(SpeechError):
+        say(GeminiSpeech(c))
+
+
+def test_padded_clip_is_skipped_but_kept_as_a_last_resort(monkeypatch):
+    monkeypatch.setenv('SCAM_COACH_GEMINI_TTS_MODELS', 'a-tts,b-tts')
+    monkeypatch.delenv('SCAM_COACH_GEMINI_TTS_MODEL', raising=False)
+    padded, good = b'\x00\x01' * 24000 * 20, b'\x00\x01' * 24000 * 2
+    tried, c = tts_mock({'a-tts': (200, padded), 'b-tts': (200, good)})
+    assert len(say(GeminiSpeech(c))) == 44 + len(good)
+    tried, c = tts_mock({'a-tts': (200, padded), 'b-tts': (429, None)})
+    assert len(say(GeminiSpeech(c))) == 44 + len(padded)  # a human voice beats no voice
+    assert plausible_length(24000 * 2 * 3, 'Hi, this is Dana with T-Mobile Rewards.')
+    assert not plausible_length(24000 * 2 * 16, 'Can you confirm the code we just texted you?')
+
+
+def test_tts_model_env_puts_that_model_first(monkeypatch):
+    monkeypatch.setenv('SCAM_COACH_GEMINI_TTS_MODEL', 'gemini-2.5-flash-preview-tts')
+    monkeypatch.delenv('SCAM_COACH_GEMINI_TTS_MODELS', raising=False)
+    sp = GeminiSpeech(client(MockGemini()))
+    assert sp.tts_models[0] == 'gemini-2.5-flash-preview-tts' and len(sp.tts_models) == 4

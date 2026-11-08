@@ -2,10 +2,11 @@
  * Browser audio for live AI practice calls (no extra packages).
  *
  * VoicePlayer: plays the AI caller's voice sentence by sentence. Each sentence's
- * audio streams from the server (OpenAI TTS behind our backend), so playback
+ * audio streams from the server (Gemini TTS behind our backend), so playback
  * starts before the whole reply is generated. One <audio> element is reused and
  * unlocked on the Answer tap so iOS allows playback. If a sentence's audio fails,
- * it falls back to the browser's own voice so the call never goes silent.
+ * it is retried once, then falls back to a natural-sounding device voice (or
+ * captions only, never a robotic voice) so the call keeps moving.
  *
  * MicListener: hands-free listening. Voice-activity detection on the mic level
  * starts a recording when the person speaks and stops after a pause; each
@@ -110,14 +111,26 @@ export class VoicePlayer {
     }
     if (!item.url || !this.el) return viaBrowser(true);
     const el = this.el;
+    const url = item.url;
     el.onended = done;
-    el.onerror = () => viaBrowser(true); // server voice failed: browser voice instead
+    let retried = false;
+    el.onerror = () => {
+      if (this.current !== item) return;
+      if (!retried) {
+        // One retry: the server moves on to another AI voice model if one is rate-limited.
+        retried = true;
+        el.src = `${url}${url.includes("?") ? "&" : "?"}retry=1`;
+        void el.play().catch(() => viaBrowser(true));
+        return;
+      }
+      viaBrowser(true); // AI voice unavailable: a natural device voice, or captions only
+    };
     el.src = item.url;
     void el.play().catch(() => {
       // Autoplay may reject once even though the sentence is still unlockable.
       // Do not start a second browser voice while server audio could play.
       el.onerror = done;
-      el.src = item.url;
+      el.src = url;
       void el.play().catch(() => {
         el.onerror = null;
         viaBrowser(true);

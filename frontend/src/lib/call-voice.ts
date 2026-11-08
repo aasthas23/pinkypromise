@@ -1,7 +1,8 @@
 /**
  * Browser voice for practice calls (Web Speech API, no extra packages).
  *
- * - speakLine(): reads a caller line aloud with speechSynthesis. It always
+ * - speakLine(): reads a caller line aloud with speechSynthesis, using only a
+ *   human-sounding voice (none on the device → captions only). It always
  *   resolves, using a reading-pace timer if speech is off, unsupported or silent,
  *   so the call never stalls. Captions are always available.
  * - listenOnce(): optional push-to-talk via SpeechRecognition. Only started when
@@ -30,16 +31,34 @@ export function unlockSpeech() {
   }
 }
 
+/**
+ * Only voices that sound like a person: neural/online voices (Edge "Natural",
+ * Chrome's Google voices, Apple Siri/Enhanced/Premium downloads). Classic
+ * on-device voices (eSpeak, compact Samantha/Alex, Microsoft David/Zira desktop)
+ * sound robotic, so they are never used: the line is shown as text instead.
+ */
+const HUMAN_VOICE = /natural|neural|online|enhanced|premium|siri|^google\b/i;
+const ROBOTIC_VOICE =
+  /espeak|compact|novelty|bad news|bells|boing|bubbles|cellos|whisper|zarvox|trinoids|albert|jester|organ|superstar|wobble/i;
+
 let cachedVoice: SpeechSynthesisVoice | null | undefined;
+/** The most human-sounding English voice on this device, or null if it only has robotic ones. */
+export function humanVoice(voices: SpeechSynthesisVoice[] = synth()?.getVoices() ?? []) {
+  const human = voices.filter(
+    (v) =>
+      v.lang?.toLowerCase().startsWith("en") &&
+      HUMAN_VOICE.test(v.name) &&
+      !ROBOTIC_VOICE.test(v.name),
+  );
+  const rank = (v: SpeechSynthesisVoice) =>
+    (v.lang === "en-US" ? 0 : 2) + (/natural|neural|siri|premium/i.test(v.name) ? 0 : 1);
+  return human.sort((a, b) => rank(a) - rank(b))[0] ?? null;
+}
+
 function pickVoice(): SpeechSynthesisVoice | null {
   if (cachedVoice !== undefined) return cachedVoice;
   const voices = synth()?.getVoices() ?? [];
-  cachedVoice =
-    voices.find((v) => v.lang === "en-US" && /natural|enhanced|premium/i.test(v.name)) ??
-    voices.find((v) => v.lang === "en-US" && /samantha|ava|karen|zira|aria|daniel/i.test(v.name)) ??
-    voices.find((v) => v.lang === "en-US") ??
-    voices.find((v) => v.lang?.startsWith("en")) ??
-    null;
+  cachedVoice = humanVoice(voices);
   if (!voices.length) cachedVoice = undefined; // voices load async in some browsers; retry next time
   return cachedVoice ?? null;
 }
@@ -66,7 +85,8 @@ export function speakLine(
         resolve();
       }
     };
-    const s = opts.enabled ? synth() : null;
+    // No human-sounding voice on this device: show the line (captions) at reading pace rather than speak robotically.
+    const s = opts.enabled && pickVoice() ? synth() : null;
     // Safety net: some browsers never fire onend. Allow a little longer than reading pace when speaking.
     const timer = setTimeout(finish, s ? readingMs(text) * 2 + 1500 : readingMs(text));
     opts.signal?.addEventListener(
@@ -80,11 +100,12 @@ export function speakLine(
     if (!s) return;
     try {
       const u = new SpeechSynthesisUtterance(text);
-      const v = pickVoice();
-      if (v) u.voice = v;
-      u.lang = v?.lang ?? "en-US";
-      u.pitch = opts.voice?.pitch ?? 1.01;
-      u.rate = opts.voice?.rate ?? 0.92;
+      const v = pickVoice()!;
+      u.voice = v;
+      u.lang = v.lang;
+      // Natural voices sound best at their own pitch and rate; only nudge them if a caller persona asks.
+      u.pitch = opts.voice?.pitch ?? 1;
+      u.rate = opts.voice?.rate ?? 1;
       u.volume = 1;
       u.onend = finish;
       u.onerror = finish;

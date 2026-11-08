@@ -370,4 +370,4 @@ class LiveService:
         if text is None:
             raise SessionNotFound(uid)
         sc = self._scenario(s)
-        return text, f'{sc.voice_style} This is a fictional training call; speak naturally, like a real phone conversation.'
+        return text, sc.voice_style  # how the caller sounds; each speech provider phrases its own direction

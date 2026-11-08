@@ -79,7 +79,7 @@ class OpenAISpeech:
             'model': self.tts_model,
             'voice': self.voice,
             'input': text[:4096],
-            'instructions': instructions[:4096],
+            'instructions': f'{instructions} This is a fictional training call; speak naturally, like a real phone conversation.'[:4096],
             'response_format': self.tts_format,
         }
         try:

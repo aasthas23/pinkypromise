@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { readingMs, speakLine } from "@/lib/call-voice";
+import { humanVoice, readingMs, speakLine } from "@/lib/call-voice";
 import { simulationService } from "@/lib/services";
 import { debriefToSimResult, scoreFor } from "@/lib/sim-result";
 import {
@@ -279,5 +279,32 @@ describe("browser voice", () => {
     await vi.advanceTimersByTimeAsync(readingMs("This is a short caller line for the test.") + 10);
     expect(done).toBe(true);
     vi.useRealTimers();
+  });
+});
+
+describe("browser fallback voice", () => {
+  const v = (name: string, lang = "en-US") => ({ name, lang }) as SpeechSynthesisVoice;
+
+  it("picks a natural-sounding voice and never a robotic one", () => {
+    expect(
+      humanVoice([
+        v("eSpeak English"),
+        v("Microsoft David - English (United States)"),
+        v("Google US English"),
+      ])?.name,
+    ).toBe("Google US English");
+    expect(
+      humanVoice([
+        v("Google UK English Female", "en-GB"),
+        v("Microsoft Aria Online (Natural) - English (United States)"),
+      ])?.name,
+    ).toContain("Aria");
+    expect(humanVoice([v("Samantha (Enhanced)"), v("Zarvox")])?.name).toBe("Samantha (Enhanced)");
+  });
+
+  it("returns null when the device only has robotic voices, so the line is shown as text", () => {
+    expect(
+      humanVoice([v("eSpeak English"), v("Alex"), v("Samantha"), v("Microsoft Zira Desktop")]),
+    ).toBeNull();
   });
 });
