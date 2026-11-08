@@ -1,0 +1,23 @@
+# Pinky Promise updates
+- [x] Rename app and prioritize phone navigation.
+- [x] Reverse verification: employee generates, customer enters code.
+- [x] Add biweekly call consent and simulation disclosure (demo only; no real calls).
+- [x] Replace training with progress and update analyst dashboard.
+- [x] Add existing mascot guidance and verify phone flows.
+- [x] Add interactive graphs and polish analyst board.
+- [x] Restyle customer progress as a playful milestone path.
+- [x] Verify chart controls and progress navigation on phone and desktop.
+- [x] Require customer lookup and selection before demo code generation and sending.
+- [x] Verify recipient-bound codes and customer lookup on phone and desktop.
+- [x] Replace the Duolingo-style progress path with a creative confidence dashboard and verify phone and desktop layouts.
+- [x] Simplify progress into a themed, playful roadmap without graphs and verify navigation and phone layout.
+- [x] Add a simple analysis beside the progress roadmap and verify desktop and phone layouts.
+- [x] Research T-Mobile styling and refresh the shared theme, navigation, and main customer pages while retaining Pinky.
+- [x] Verify refreshed pages and caller-code flow on desktop and phone.
+- [x] Restore warmth and cuteness while keeping clear layouts.
+- [x] Create and inspect two pinky-promise logo options.
+- [x] Apply the chosen pinkies-and-sparkle logo and matching favicon.
+- [x] Soften mobile buttons and edges, add frosted-glass navigation, and verify phone layouts.
+- [x] Enrich backgrounds, home sections, roadmap analysis, and analyst charts; verify mobile presentation and controls.
+- [x] Refine the pink-and-white sketchbook theme, create emotional Pinky poses, and verify mobile rendering and animations.
+- [x] Expand Penny’s emotions and expressive animations, update her name, and verify mobile rendering.

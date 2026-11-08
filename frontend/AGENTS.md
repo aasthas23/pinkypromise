@@ -1,41 +1,41 @@
-This is an Expo/React Native mobile application. Prioritize mobile-first patterns, performance, and cross-platform compatibility.
+<!-- LOVABLE:BEGIN -->
+> [!IMPORTANT]
+> This project is connected to [Lovable](https://lovable.dev). Avoid rewriting
+> published git history — force pushing, or rebasing/amending/squashing commits
+> that are already pushed — as it rewrites history on Lovable's side and the
+> user will likely lose their project history.
+>
+> Commits you push to the connected branch sync back to Lovable and show up in
+> the editor, so keep the branch in a working state.
 
-## Expo has changed — do not trust your training data
+## What Lovable manages
 
-Expo ships breaking changes every SDK release. APIs you remember are likely renamed, moved, or removed. Before writing any code that touches an Expo, EAS, or React Native API:
+Rules outside this block are the project's own. Change the pieces below in
+Lovable, not by hand. With the [Lovable MCP](https://mcp.lovable.dev)
+connected, `send_message` asks Lovable to do it; otherwise ask the user to
+use the editor.
 
-1. Read the major version of the `expo` package in `package.json`.
-2. Fetch the matching versioned docs: `https://docs.expo.dev/versions/v<major>.0.0/`
-3. For anything else, fetch https://docs.expo.dev/llms.txt — an index of all Expo docs with corrections to common LLM misconceptions. Follow its links to the specific page you need; never answer from memory.
+- **Database.** Do not add or edit `supabase/migrations/` or `drizzle/`.
+  Ask Lovable to change the schema.
+- **Generated files.** Do not edit a file whose header says it is automatically
+  generated.
+- **AI gateway.** Keep model calls on Lovable's gateway, and keep
+  `LOVABLE_API_KEY` out of browser code.
+- **Connectors.** Lovable provides native connectors. `list_connectors` shows
+  which are enabled; `add_connector` only returns the dashboard link. When a
+  connector is enabled, calls go through the connector gateway and need
+  `LOVABLE_API_KEY`. When Lovable does not provide one, users can bring their
+  own key and store it in Secrets.
+- **Secrets.** Lovable manages them. Do not put secret values in the repo.
+<!-- LOVABLE:END -->
 
-## Commands
+- Pinky Promise is frontend-only: UI reads shared demo state via `useDemo()` (src/lib/store.ts) and mutates only through src/lib/services.ts, so mock services can be swapped for real backend/Voice AI without UI rewrites.
+- Customer and employee views share one shell (src/components/safe/AppShell.tsx); employee routes live under /employee.
+- Shared CSS tokens, Button variants, and the AppShell own the brand theme so customer and employee pages stay visually consistent.
+- Canvas patterns and chart-surface treatments are defined as shared CSS tokens and utilities so page styling stays consistent without changing demo behavior.
+- Mascot moods select a matching pose asset and sequenced gesture with decorative emotion particles in the shared Mascot component; keep motion and reduced-motion handling there rather than nesting page-level animation so every page reuses consistent emotional behavior.
 
-Use `bunx` instead of `npx` if the project uses bun (`bun.lock` present).
-
-```bash
-npx expo install <package>  # ALWAYS use instead of npm/yarn/pnpm/bun add — resolves SDK-compatible versions
-npx expo start              # start the dev server
-npx expo lint               # lint
-npx tsc --noEmit            # typecheck
-npx expo-doctor             # diagnose dependency and config issues
-npx expo install --fix      # fix incompatible package versions
-```
-
-Run lint and typecheck before declaring any task done.
-
-## Navigation & Routing
-
-- Use **Expo Router** for all navigation. Routes live in `src/app/` — every file there is a screen, `_layout.tsx` files define navigators. Keep non-route code (components, hooks, utils) outside `src/app/`.
-- Import `Link`, `router`, and `useLocalSearchParams` from `expo-router`.
-- Docs: https://docs.expo.dev/router/introduction.md
-
-## Building with EAS
-
-Use EAS to build, sign, and submit the app in the cloud (`eas build`, `eas submit`) and to ship over-the-air updates (`eas update`) — no local Xcode or Android Studio required. Run EAS CLI as `bunx eas-cli <command>` in Bun projects, or `npx eas-cli@latest <command>` otherwise; substitute that for bare `eas` in docs examples.
-Docs: https://docs.expo.dev/eas/index.md
-
-## Rules
-
-- If `ios/` and `android/` directories do not exist, they are generated (Continuous Native Generation). Never create or edit them by hand — configure native behavior in `app.json` and config plugins.
-- Expo Go only includes its bundled native modules. After adding a library with native code, the app needs a development build: `npx expo run:ios|android` locally, or `eas build --profile development`.
-- Prefer recommended Expo modules over third-party libraries, and check your available skills before adding dependencies. Docs: https://docs.expo.dev/versions/latest/index.md
+- Caller verification is generated in the employee view and checked in the customer view through the shared mock service to preserve the demo boundary.
+- Customer lookup and code delivery stay in the mock verification service; sessions are bound to the selected customer so other customers cannot verify them.
+- Progress and analyst summaries derive from shared simulation results; call consent is a demo preference and does not schedule real calls.
+- Analyst charts and the customer progress roadmap derive from shared demo data and simulation results without adding call-unlock rules.

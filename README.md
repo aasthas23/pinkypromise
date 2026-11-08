@@ -2,7 +2,7 @@
 
 This repo contains:
 
-- Frontend: Expo React Native app in `frontend/`
+- Frontend: web app in `frontend/`
 - Backend: Python API in `backend/`
 
 The app opens on **Scam Coach**, a simulated scam-call trainer (see `CLAUDE_ScamSim.md`).
@@ -41,17 +41,16 @@ pytest                      # engine, safety and API tests (no real model calls)
 ```bash
 cd frontend
 npm install
-npx expo start
+npm run dev -- --host 0.0.0.0 --port 4173
 ```
 
-The app looks for the backend on port 8000 of the machine running Metro.
-Set `EXPO_PUBLIC_API_URL` (for example `http://192.168.1.20:8000`) if it runs somewhere else.
-A phone needs to be on the same network as the backend.
+The web app looks for the backend on port 8000 of the local machine.
+Set the API URL in your frontend config if it runs somewhere else.
 
 ```bash
-npm run typecheck   # tsc --noEmit
-npm run lint        # expo lint
-npm test            # jest: API client + bundled clip checks
+npm run build
+npm run lint
+npm test
 ```
 
 Two scenarios open with real FTC robocall recordings from the
