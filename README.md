@@ -1,4 +1,4 @@
-# Pink Promise
+# Pinky Promise
 
 This repo contains:
 
