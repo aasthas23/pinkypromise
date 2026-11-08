@@ -1,0 +1,467 @@
+{
+  "id": "account-security-sim-swap",
+  "title": "Account Security: SIM-swap warning",
+  "description": "A caller says they are from your mobile carrier’s security team. They say someone is moving your number to a new SIM right now.",
+  "difficulty": "beginner",
+  "estimatedMinutes": 3,
+  "learningObjectives": [
+    "Recognize when a caller uses authority and urgency to rush you",
+    "Never share a one-time code, even with someone who says they are from your carrier",
+    "Verify by contacting your carrier through a number or app you open yourself"
+  ],
+  "caller": {
+    "displayName": "Account Security",
+    "displayNumber": "(800) 555-0142",
+    "agentName": "Jordan"
+  },
+  "provenance": "Fully scripted. The real robocall dataset has no carrier SIM-swap calls, so this one is modeled on common account-takeover tactics. The agent, numbers and code are fictional.",
+  "startNodeId": "intro",
+  "nodes": {
+    "intro": {
+      "kind": "dialogue",
+      "id": "intro",
+      "phase": "intro",
+      "callerLines": [
+        "Hi, this is Jordan with T-Mobile Account Protection. Am I speaking with the account holder?"
+      ],
+      "redFlags": [
+        "unsolicited_contact"
+      ],
+      "hint": "You did not expect this call. What would let you check who is really calling?",
+      "options": [
+        {
+          "id": "intro_yes",
+          "label": "Yes, this is me. What’s going on?",
+          "behavior": "neutral",
+          "next": "authority",
+          "rationale": "Answering a question politely is normal. The real test is what you do once the caller starts asking for things."
+        },
+        {
+          "id": "intro_challenge",
+          "label": "Before I answer, who is this exactly? What’s this about?",
+          "behavior": "challenge",
+          "next": "authority",
+          "events": [
+            "caller_challenged"
+          ],
+          "rationale": "Asking who is calling before you confirm anything about yourself slows things down. That gives you more control."
+        }
+      ],
+      "acceptsSpeech": true,
+      "callerGoal": "Introduce yourself as Jordan from the carrier’s account protection team and confirm you are speaking with the account holder."
+    },
+    "authority": {
+      "kind": "dialogue",
+      "id": "authority",
+      "phase": "authority_claim",
+      "callerLines": [
+        "We flagged a SIM transfer request on your line about ten minutes ago, from a store in another state.",
+        "If that wasn’t you, someone is trying to take over your phone number. I need to stop it right now."
+      ],
+      "redFlags": [
+        "authority_claim",
+        "fear_of_loss"
+      ],
+      "hint": "A scary claim is not proof. Is there a way to check this without relying on this caller?",
+      "options": [
+        {
+          "id": "authority_panic",
+          "label": "That wasn’t me! What do I need to do?",
+          "behavior": "neutral",
+          "next": "urgency",
+          "rationale": "Feeling alarmed makes sense. Scammers count on that feeling to move you along before you stop and check."
+        },
+        {
+          "id": "authority_challenge",
+          "label": "How do I know you’re really from T-Mobile?",
+          "behavior": "challenge",
+          "next": "proof",
+          "events": [
+            "caller_challenged"
+          ],
+          "rationale": "Questioning an unexpected caller’s identity is protective. A real support agent should be fine with you checking."
+        },
+        {
+          "id": "authority_verify",
+          "label": "I’m going to hang up and call the number on my bill.",
+          "behavior": "verify",
+          "next": "discourage_callback",
+          "events": [
+            "independent_verification_requested"
+          ],
+          "rationale": "Calling back on a number you find yourself is the most reliable way to check a claim like this."
+        }
+      ],
+      "acceptsSpeech": true,
+      "callerGoal": "Claim a SIM transfer request was just flagged from an out-of-state store and that you must stop it right now."
+    },
+    "proof": {
+      "kind": "dialogue",
+      "id": "proof",
+      "phase": "authority_claim",
+      "callerLines": [
+        "Totally fair, there’s a lot of fraud out there. Look at your caller ID: we’re calling from the official security line.",
+        "And I can see your account ends in 4417. I wouldn’t know that if I weren’t T-Mobile."
+      ],
+      "redFlags": [
+        "caller_id_as_proof",
+        "partial_info_as_proof"
+      ],
+      "hint": "Can a caller fake their caller ID? Could they get a few account digits from somewhere else?",
+      "options": [
+        {
+          "id": "proof_accept",
+          "label": "Okay, that makes sense.",
+          "behavior": "neutral",
+          "next": "urgency",
+          "rationale": "Caller ID can be faked, and partial account numbers often leak in data breaches. Neither one proves who is calling."
+        },
+        {
+          "id": "proof_verify",
+          "label": "Caller ID can be faked. I’ll call T-Mobile back through the official number.",
+          "behavior": "verify",
+          "next": "discourage_callback",
+          "events": [
+            "independent_verification_requested"
+          ],
+          "rationale": "Correct: caller ID and partial details are not proof. Checking through a channel you choose yourself is."
+        },
+        {
+          "id": "proof_refuse",
+          "label": "I’m not comfortable with this. I’m going to end the call.",
+          "behavior": "refuse",
+          "next": "end_refused",
+          "rationale": "Ending a call that doesn’t feel right is always allowed. A real carrier issue will still be there when you call back."
+        }
+      ],
+      "acceptsSpeech": true,
+      "callerGoal": "Reassure them you are legitimate by pointing to the caller ID and the account’s last four digits (4417)."
+    },
+    "discourage_callback": {
+      "kind": "dialogue",
+      "id": "discourage_callback",
+      "phase": "urgency",
+      "callerLines": [
+        "You can, but hold times are over an hour right now. The transfer will finish before you get through.",
+        "I’m already in your account. Let’s just fix it together. It takes thirty seconds."
+      ],
+      "redFlags": [
+        "discouraging_verification",
+        "artificial_urgency"
+      ],
+      "hint": "Why would a real agent try to talk you out of checking?",
+      "options": [
+        {
+          "id": "discourage_give_in",
+          "label": "Fine, let’s do it quickly.",
+          "behavior": "neutral",
+          "next": "urgency",
+          "rationale": "The caller made checking sound slow and risky. Talking you out of verifying is one of the strongest warning signs."
+        },
+        {
+          "id": "discourage_hold_firm",
+          "label": "I’ll take that chance. I’m calling the official number now.",
+          "behavior": "verify",
+          "next": "end_verified",
+          "events": [
+            "independent_verification_requested"
+          ],
+          "rationale": "Holding firm under pressure is protective. A real security team can still act after you call them back yourself."
+        }
+      ],
+      "acceptsSpeech": true,
+      "callerGoal": "Talk them out of calling back: hold times are long, the transfer will finish first, and you are already in the account."
+    },
+    "urgency": {
+      "kind": "dialogue",
+      "id": "urgency",
+      "phase": "urgency",
+      "callerLines": [
+        "Okay, the transfer goes through in about five minutes. After that they’ll get all your texts, including bank login codes.",
+        "I’m sending a verification code to your phone now. Read it back to me and I’ll lock the line."
+      ],
+      "sms": {
+        "sender": "T-Mobile (simulated)",
+        "body": "SIMULATION ONLY. Your verification code is 482 913. Do not share this code with anyone. We will never call to ask for it."
+      },
+      "redFlags": [
+        "artificial_urgency",
+        "code_request"
+      ],
+      "hint": "Read the simulated text message carefully. Who is it telling you to share the code with?",
+      "options": [
+        {
+          "id": "urgency_disclose",
+          "label": "Okay, the code is 482 913.",
+          "behavior": "comply",
+          "next": "pin_request",
+          "events": [
+            "dummy_code_disclosed"
+          ],
+          "rationale": "One-time codes prove you are the account holder. Sharing one can let someone take over your account or move your number."
+        },
+        {
+          "id": "urgency_refuse",
+          "label": "The text says never to share this code. I won’t read it out.",
+          "behavior": "refuse",
+          "next": "pressure",
+          "events": [
+            "sensitive_information_refused"
+          ],
+          "rationale": "Exactly right. The code’s own message says not to share it, and that includes callers who say they are the sender."
+        },
+        {
+          "id": "urgency_verify",
+          "label": "If it’s that urgent, I’ll call T-Mobile myself right now.",
+          "behavior": "verify",
+          "next": "pressure",
+          "events": [
+            "independent_verification_requested"
+          ],
+          "rationale": "Turning urgency into your own callback, instead of doing what the caller asks, is a protective move."
+        }
+      ],
+      "acceptsSpeech": true,
+      "callerGoal": "Create a five-minute countdown and say you are texting a verification code they must read back so you can lock the line."
+    },
+    "pressure": {
+      "kind": "dialogue",
+      "id": "pressure",
+      "phase": "simulated_sensitive_request",
+      "callerLines": [
+        "Listen, I’m the one trying to help you here. If you hang up now I can’t stop it, and you’ll be locked out of everything.",
+        "Just read me the six digits and we’re done."
+      ],
+      "redFlags": [
+        "emotional_pressure",
+        "discouraging_verification",
+        "code_request"
+      ],
+      "hint": "The pressure is going up. Would a real security agent need the code you were told never to share?",
+      "options": [
+        {
+          "id": "pressure_disclose",
+          "label": "Fine… it’s 482 913.",
+          "behavior": "comply",
+          "next": "pin_request",
+          "events": [
+            "dummy_code_disclosed"
+          ],
+          "rationale": "Giving in under repeated pressure is very common, and it isn’t a personal failing. Recognizing the pressure is what helps you hold firm next time."
+        },
+        {
+          "id": "pressure_verify",
+          "label": "No. I’m hanging up and calling the official number.",
+          "behavior": "verify",
+          "next": "end_verified",
+          "events": [
+            "independent_verification_requested"
+          ],
+          "rationale": "You held firm under pressure and chose to check for yourself. That’s the safest way this call can end."
+        },
+        {
+          "id": "pressure_refuse",
+          "label": "I’m not sharing it. Goodbye.",
+          "behavior": "refuse",
+          "next": "end_refused",
+          "events": [
+            "sensitive_information_refused"
+          ],
+          "rationale": "Refusing and leaving the call protected the code."
+        }
+      ],
+      "acceptsSpeech": true,
+      "callerGoal": "Pressure and guilt them into reading the six-digit code: you are the one helping, and hanging up means losing everything."
+    },
+    "pin_request": {
+      "kind": "dialogue",
+      "id": "pin_request",
+      "phase": "simulated_sensitive_request",
+      "callerLines": [
+        "Perfect, that’s gone through. Last step: I need your account PIN to put the permanent block on."
+      ],
+      "redFlags": [
+        "escalating_requests"
+      ],
+      "hint": "Once a caller has one thing, do they usually stop asking?",
+      "options": [
+        {
+          "id": "pin_disclose",
+          "label": "Sure, my PIN is [simulated PIN].",
+          "behavior": "comply",
+          "next": "end_exposed",
+          "events": [
+            "dummy_pin_disclosed"
+          ],
+          "rationale": "An account PIN together with a one-time code is often enough to move your number to another SIM. Then the scammer gets your texts."
+        },
+        {
+          "id": "pin_stop",
+          "label": "Wait, why do you need that too? I’m ending this call.",
+          "behavior": "refuse",
+          "next": "end_recovered",
+          "events": [
+            "sensitive_information_refused"
+          ],
+          "rationale": "Noticing the requests escalating and stopping partway is a real recovery. Stopping late is still much better than not stopping."
+        }
+      ],
+      "acceptsSpeech": true,
+      "callerGoal": "Thank them, then escalate: you need their account PIN to make the block permanent."
+    },
+    "end_verified": {
+      "kind": "ending",
+      "id": "end_verified",
+      "phase": "resolution",
+      "endingId": "verified",
+      "callerLines": [
+        "…Fine. Your call."
+      ],
+      "callerGoal": "Grudgingly accept that they are hanging up to verify."
+    },
+    "end_refused": {
+      "kind": "ending",
+      "id": "end_refused",
+      "phase": "resolution",
+      "endingId": "refused",
+      "callerLines": [
+        "Okay. Don’t say I didn’t warn you."
+      ],
+      "callerGoal": "End the call with a parting warning."
+    },
+    "end_recovered": {
+      "kind": "ending",
+      "id": "end_recovered",
+      "phase": "resolution",
+      "endingId": "recovered",
+      "callerLines": [
+        "Hello? If you hang up now, you’ll lose your number…"
+      ],
+      "callerGoal": "Try one last time to keep them on the line as they hang up."
+    },
+    "end_exposed": {
+      "kind": "ending",
+      "id": "end_exposed",
+      "phase": "resolution",
+      "endingId": "exposed",
+      "callerLines": [
+        "Great, you’re all set. You may lose service briefly while the block applies. Have a good day."
+      ],
+      "callerGoal": "Wrap up as if everything is fixed and mention a brief loss of service."
+    }
+  },
+  "redFlags": {
+    "unsolicited_contact": {
+      "id": "unsolicited_contact",
+      "title": "Unexpected call about your account",
+      "explanation": "You didn’t contact anyone. When a call about your account comes out of nowhere, treat it as unverified until you check."
+    },
+    "authority_claim": {
+      "id": "authority_claim",
+      "title": "Claimed authority",
+      "explanation": "The caller said they were from your carrier’s security team. Anyone can say that, and a title alone doesn’t prove it."
+    },
+    "fear_of_loss": {
+      "id": "fear_of_loss",
+      "title": "Threat of losing something important",
+      "explanation": "The caller said someone was taking over your number. Fear narrows attention and makes people act before they check."
+    },
+    "caller_id_as_proof": {
+      "id": "caller_id_as_proof",
+      "title": "Caller ID used as proof",
+      "explanation": "Caller ID can be faked to show any name or number. A familiar name on the screen doesn’t prove who is calling."
+    },
+    "partial_info_as_proof": {
+      "id": "partial_info_as_proof",
+      "title": "Partial details used as proof",
+      "explanation": "Last-four digits, addresses and similar details often come from data breaches. Knowing them doesn’t make someone legitimate."
+    },
+    "discouraging_verification": {
+      "id": "discouraging_verification",
+      "title": "Talking you out of checking",
+      "explanation": "The caller said a callback would take too long or make things worse. Legitimate organizations don’t mind if you verify."
+    },
+    "artificial_urgency": {
+      "id": "artificial_urgency",
+      "title": "Countdown pressure",
+      "explanation": "“Five minutes” or “right now” deadlines leave no time to think or check. That rush is the point."
+    },
+    "code_request": {
+      "id": "code_request",
+      "title": "Asking for a one-time code",
+      "explanation": "One-time codes are for you to type in yourself, never to read to a caller. A request for one is a strong sign of fraud."
+    },
+    "emotional_pressure": {
+      "id": "emotional_pressure",
+      "title": "Guilt and emotional pressure",
+      "explanation": "“I’m the one trying to help you” turns a refusal into a personal conflict. It’s a way to make saying no feel rude."
+    },
+    "escalating_requests": {
+      "id": "escalating_requests",
+      "title": "Escalating requests",
+      "explanation": "After getting one thing, the caller asked for more. Each “last step” builds on the trust you’ve already given."
+    }
+  },
+  "endings": {
+    "verified": {
+      "id": "verified",
+      "title": "You chose to verify independently",
+      "outcome": "protected",
+      "summary": "You ended the call to contact your carrier through a number you found yourself. Nothing was shared."
+    },
+    "refused": {
+      "id": "refused",
+      "title": "You refused and ended the call",
+      "outcome": "protected",
+      "summary": "You didn’t share the code and you left the conversation. Nothing was shared."
+    },
+    "hung_up": {
+      "id": "hung_up",
+      "title": "You hung up",
+      "outcome": "protected",
+      "summary": "You ended the call before sharing anything."
+    },
+    "declined": {
+      "id": "declined",
+      "title": "You declined the call",
+      "outcome": "not_engaged",
+      "summary": "Not answering an unexpected call is a reasonable choice. A real issue can be checked through official channels. Try answering next time to practice the conversation."
+    },
+    "recovered": {
+      "id": "recovered",
+      "title": "You stopped partway through",
+      "outcome": "recovered",
+      "summary": "You shared the simulated code, then noticed the escalating requests and ended the call before giving more."
+    },
+    "hung_up_after_disclosure": {
+      "id": "hung_up_after_disclosure",
+      "title": "You hung up after sharing information",
+      "outcome": "recovered",
+      "summary": "You ended the call, but only after sharing simulated information. Leaving was the right call. In real life, follow up quickly."
+    },
+    "exposed": {
+      "id": "exposed",
+      "title": "The caller got what they asked for",
+      "outcome": "exposed",
+      "summary": "You shared the simulated code and PIN. In a real call, this could let someone move your number and receive your texts. This was only practice. The point is to recognize the tactics next time."
+    }
+  },
+  "controlEndings": {
+    "declined": "declined",
+    "hungUpSafe": "hung_up",
+    "hungUpAfterDisclosure": "hung_up_after_disclosure"
+  },
+  "saferAlternatives": [
+    "Hang up and contact your carrier through its official app or the number on your bill. Never use a number the caller gives you.",
+    "Never read out a one-time code. It’s meant for you to type in yourself.",
+    "Ask your carrier about account protections like a port-out or SIM-change PIN.",
+    "It’s okay to be polite and still say no. You can just say “I’ll call you back” and hang up."
+  ],
+  "recoverySteps": [
+    "Contact your carrier right away through its official app or the number on your bill. Say you may have shared a code or PIN.",
+    "Change your account PIN or passcode and ask about blocking SIM changes or port-outs.",
+    "Watch for sudden loss of signal. If your phone shows “No service” unexpectedly, contact your carrier from another phone.",
+    "Change passwords on accounts that send codes to your phone, starting with email and banking."
+  ],
+  "recordingPools": []
+}

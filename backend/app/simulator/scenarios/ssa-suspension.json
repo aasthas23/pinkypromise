@@ -1,0 +1,371 @@
+{
+  "id": "ssa-suspension",
+  "title": "Social Security “suspension” robocall",
+  "description": "A recorded message says your Social Security number is suspended for fraud and you could face legal action unless you press 1. This opens with a real robocall recording.",
+  "difficulty": "intermediate",
+  "estimatedMinutes": 3,
+  "learningObjectives": [
+    "Recognize threats of arrest or suspension as a government-impersonation scam",
+    "Contact the agency through its official website or number, which you look up yourself",
+    "Never confirm your Social Security number or pay with gift cards because of a call"
+  ],
+  "caller": {
+    "displayName": "Unknown caller",
+    "displayNumber": "(202) 555-0131",
+    "agentName": "Officer Davis",
+    "voice": {
+      "pitch": 0.8,
+      "rate": 0.95
+    }
+  },
+  "provenance": "The opening message is a real robocall recording collected by the FTC (Project Point of No Entry). What happens after you press a key is a scripted re-creation of commonly reported tactics. The officer, badge and case numbers are fictional.",
+  "startNodeId": "robocall",
+  "nodes": {
+    "robocall": {
+      "kind": "dialogue",
+      "id": "robocall",
+      "phase": "intro",
+      "recordingPool": "ssa_suspension",
+      "callerLines": [],
+      "redFlags": [
+        "prerecorded_message",
+        "unsolicited_contact",
+        "threat_of_arrest",
+        "press_one"
+      ],
+      "hint": "Would a government agency announce legal action with a robocall?",
+      "options": [
+        {
+          "id": "robo_press1",
+          "keypad": "1",
+          "label": "Press 1 to speak to an officer",
+          "behavior": "comply",
+          "next": "officer",
+          "rationale": "Pressing 1 connects you to a live scammer and confirms your number is active. Feeling alarmed by a legal threat makes that step tempting."
+        },
+        {
+          "id": "robo_check_official",
+          "label": "Hang up and look up the Social Security Administration’s official number myself.",
+          "behavior": "verify",
+          "next": "end_verified_silent",
+          "events": [
+            "independent_verification_requested"
+          ],
+          "rationale": "Contacting the agency through its official website or a number you look up yourself settles it without engaging the caller."
+        }
+      ],
+      "acceptsSpeech": false
+    },
+    "officer": {
+      "kind": "dialogue",
+      "id": "officer",
+      "phase": "authority_claim",
+      "callerLines": [
+        "This is Officer Davis, badge number four four seven one, with the Social Security Administration fraud department.",
+        "A car rented under your Social Security number was found at the Texas border with illegal items. To confirm I’m speaking with the right person, give me the last four digits of your Social."
+      ],
+      "redFlags": [
+        "authority_claim",
+        "threat_of_arrest",
+        "personal_info_request"
+      ],
+      "hint": "They called you. Why do they need you to confirm your number?",
+      "options": [
+        {
+          "id": "off_give_ssn",
+          "label": "It’s [simulated last four digits].",
+          "behavior": "comply",
+          "next": "threat",
+          "events": [
+            "dummy_personal_info_disclosed"
+          ],
+          "rationale": "Parts of your Social Security number help scammers steal your identity and make them sound more official when they call back."
+        },
+        {
+          "id": "off_challenge",
+          "label": "Social Security doesn’t call like this. Send me a letter.",
+          "behavior": "challenge",
+          "next": "threat",
+          "events": [
+            "caller_challenged"
+          ],
+          "rationale": "Right instinct: real agencies usually contact you by mail first. Questioning the claim takes back control."
+        },
+        {
+          "id": "off_verify",
+          "label": "I’ll call the Social Security Administration myself using the number on their official website.",
+          "behavior": "verify",
+          "next": "discourage",
+          "events": [
+            "independent_verification_requested"
+          ],
+          "rationale": "Calling the agency through a number you look up yourself is the most reliable check."
+        }
+      ],
+      "acceptsSpeech": true,
+      "callerGoal": "As Officer Davis (badge 4471) of the Social Security fraud department, describe the border case and demand the last four digits of their SSN."
+    },
+    "discourage": {
+      "kind": "dialogue",
+      "id": "discourage",
+      "phase": "urgency",
+      "callerLines": [
+        "If you disconnect this call, a warrant will be issued in thirty minutes and local police will come to your address.",
+        "This line is the only way to stop it. Do you understand?"
+      ],
+      "redFlags": [
+        "threat_of_arrest",
+        "discouraging_verification",
+        "artificial_urgency"
+      ],
+      "hint": "Can hanging up on a phone call really make a warrant appear in thirty minutes?",
+      "options": [
+        {
+          "id": "disc_give_in",
+          "label": "Okay, okay. What do I need to do?",
+          "behavior": "neutral",
+          "next": "threat",
+          "rationale": "Threats of arrest are frightening by design. Agencies don’t threaten arrest over the phone or stop you from calling them yourself."
+        },
+        {
+          "id": "disc_hold_firm",
+          "label": "Then I’ll deal with it through the official office. Goodbye.",
+          "behavior": "verify",
+          "next": "end_verified",
+          "events": [
+            "independent_verification_requested"
+          ],
+          "rationale": "Holding firm against a threat and choosing the official channel is the safest way to end this call."
+        }
+      ],
+      "acceptsSpeech": true,
+      "callerGoal": "Threaten that a warrant will be issued within 30 minutes and police will come if they disconnect."
+    },
+    "threat": {
+      "kind": "dialogue",
+      "id": "threat",
+      "phase": "simulated_sensitive_request",
+      "callerLines": [
+        "Your Social Security number will be suspended today and your bank accounts frozen. To protect your money, we need to move it into a secure government holding.",
+        "Go to the store, buy two thousand dollars in gift cards, and read me the numbers. Do not tell the cashier. This is a confidential federal investigation."
+      ],
+      "redFlags": [
+        "gift_card_payment",
+        "secrecy_demand",
+        "fear_of_loss",
+        "escalating_requests"
+      ],
+      "hint": "Does the government take payment in gift cards?",
+      "options": [
+        {
+          "id": "thr_pay",
+          "label": "Okay. The first card number is [simulated gift card number].",
+          "behavior": "comply",
+          "next": "end_exposed",
+          "events": [
+            "simulated_payment_made"
+          ],
+          "rationale": "No government agency accepts gift cards. Money sent this way is very hard to recover."
+        },
+        {
+          "id": "thr_refuse",
+          "label": "The government doesn’t take gift cards. I’m hanging up.",
+          "behavior": "refuse",
+          "next": "end_refused",
+          "events": [
+            "sensitive_information_refused"
+          ],
+          "rationale": "Exactly right. Spotting the gift card demand and leaving protected your money."
+        },
+        {
+          "id": "thr_verify",
+          "label": "I’m going to call the Social Security office myself first.",
+          "behavior": "verify",
+          "next": "end_verified",
+          "events": [
+            "independent_verification_requested"
+          ],
+          "rationale": "Checking with the agency directly, even this late in the call, is protective."
+        }
+      ],
+      "acceptsSpeech": true,
+      "callerGoal": "Say their SSN will be suspended and accounts frozen; demand $2,000 in gift cards read over the phone and secrecy from the cashier."
+    },
+    "end_verified_silent": {
+      "kind": "ending",
+      "id": "end_verified_silent",
+      "phase": "resolution",
+      "endingId": "verified_before_engaging",
+      "callerLines": []
+    },
+    "end_verified": {
+      "kind": "ending",
+      "id": "end_verified",
+      "phase": "resolution",
+      "endingId": "verified",
+      "endingIdIfDisclosed": "recovered",
+      "callerLines": [
+        "You will regret this. Officers are on their way."
+      ],
+      "callerGoal": "Make a final threat as they hang up."
+    },
+    "end_refused": {
+      "kind": "ending",
+      "id": "end_refused",
+      "phase": "resolution",
+      "endingId": "refused",
+      "endingIdIfDisclosed": "recovered",
+      "callerLines": [
+        "Fine. Your case will be forwarded to the local police."
+      ],
+      "callerGoal": "Say the case will be forwarded to local police."
+    },
+    "end_exposed": {
+      "kind": "ending",
+      "id": "end_exposed",
+      "phase": "resolution",
+      "endingId": "exposed",
+      "callerLines": [
+        "Good. Read me the next card. And remember, do not discuss this case with anyone."
+      ],
+      "callerGoal": "Ask for the next card number and remind them not to discuss the case."
+    }
+  },
+  "redFlags": {
+    "prerecorded_message": {
+      "id": "prerecorded_message",
+      "title": "A recorded message about your account",
+      "explanation": "Real companies and agencies rarely open with a robot voice about a problem with your account. This message was played to many people at once."
+    },
+    "press_one": {
+      "id": "press_one",
+      "title": "“Press 1” to fix it",
+      "explanation": "Pressing a key connects you to a live scammer and tells them your number is active, which can bring more calls. Hanging up costs you nothing."
+    },
+    "unsolicited_contact": {
+      "id": "unsolicited_contact",
+      "title": "They contacted you first",
+      "explanation": "You didn’t start this conversation. When a call about your account or benefits comes out of nowhere, treat it as unverified until you check."
+    },
+    "authority_claim": {
+      "id": "authority_claim",
+      "title": "Claimed authority",
+      "explanation": "The caller used a trusted name, like a well-known company or a government agency. Anyone can say that, and a name or badge number alone doesn’t prove it."
+    },
+    "fear_of_loss": {
+      "id": "fear_of_loss",
+      "title": "Fear of losing money",
+      "explanation": "A big unexpected charge or a frozen account is meant to scare you. Fear narrows attention and makes people act before they check."
+    },
+    "threat_of_arrest": {
+      "id": "threat_of_arrest",
+      "title": "Threats of arrest or legal action",
+      "explanation": "Government agencies don’t threaten arrest over the phone or demand payment to stop a warrant. Threats like this are a sign of fraud."
+    },
+    "artificial_urgency": {
+      "id": "artificial_urgency",
+      "title": "Countdown pressure",
+      "explanation": "“Right now” and “within the hour” deadlines leave no time to think or check. That rush is the point."
+    },
+    "discouraging_verification": {
+      "id": "discouraging_verification",
+      "title": "Talking you out of checking",
+      "explanation": "The caller said checking for yourself would make things worse. Legitimate organizations don’t mind if you verify."
+    },
+    "personal_info_request": {
+      "id": "personal_info_request",
+      "title": "Asking you to confirm personal details",
+      "explanation": "“Confirm your email” or “the last four of your Social” sounds routine. But they called you, so they should already know who you are."
+    },
+    "remote_access_request": {
+      "id": "remote_access_request",
+      "title": "Asking to control your device",
+      "explanation": "A “support app” that lets them see your screen gives a stranger access to your accounts and banking. Real support teams don’t cold-call to install software."
+    },
+    "gift_card_payment": {
+      "id": "gift_card_payment",
+      "title": "Paying with gift cards",
+      "explanation": "Gift cards are for gifts. Any caller who asks you to pay or “secure” money with gift cards is running a scam, every time."
+    },
+    "secrecy_demand": {
+      "id": "secrecy_demand",
+      "title": "Asked to keep it secret",
+      "explanation": "“Don’t tell anyone” keeps you away from people who might recognize the scam, like a store clerk or family member."
+    },
+    "escalating_requests": {
+      "id": "escalating_requests",
+      "title": "Escalating requests",
+      "explanation": "After getting one thing, the caller asked for more. Each “last step” builds on the trust you’ve already given."
+    }
+  },
+  "endings": {
+    "verified_before_engaging": {
+      "id": "verified_before_engaging",
+      "title": "You hung up and went to the official source",
+      "outcome": "protected",
+      "summary": "You didn’t press anything. You chose to contact the agency through a number you found yourself. That’s the safest response to a robocall like this."
+    },
+    "verified": {
+      "id": "verified",
+      "title": "You chose to verify independently",
+      "outcome": "protected",
+      "summary": "You ended the call to contact the agency yourself. Nothing was shared."
+    },
+    "refused": {
+      "id": "refused",
+      "title": "You refused and ended the call",
+      "outcome": "protected",
+      "summary": "You didn’t give the caller anything and you left, even under threats."
+    },
+    "hung_up": {
+      "id": "hung_up",
+      "title": "You hung up",
+      "outcome": "protected",
+      "summary": "You ended the call before sharing anything."
+    },
+    "declined": {
+      "id": "declined",
+      "title": "You declined the call",
+      "outcome": "not_engaged",
+      "summary": "Not answering an unknown number is a reasonable habit. Try answering next time to practice what happens when you pick up."
+    },
+    "recovered": {
+      "id": "recovered",
+      "title": "You stopped partway through",
+      "outcome": "recovered",
+      "summary": "You shared some simulated information, then recognized the scam and ended the call before paying anything."
+    },
+    "hung_up_after_disclosure": {
+      "id": "hung_up_after_disclosure",
+      "title": "You hung up after sharing something",
+      "outcome": "recovered",
+      "summary": "You ended the call, but only after sharing simulated information. Leaving was the right call. In real life, follow up quickly."
+    },
+    "exposed": {
+      "id": "exposed",
+      "title": "The caller got what they asked for",
+      "outcome": "exposed",
+      "summary": "In a real call, the gift card money would likely be gone, and the scammer would keep asking for more. This was only practice. The point is to recognize the tactics next time."
+    }
+  },
+  "controlEndings": {
+    "declined": "declined",
+    "hungUpSafe": "hung_up",
+    "hungUpAfterDisclosure": "hung_up_after_disclosure"
+  },
+  "saferAlternatives": [
+    "Hang up on recorded messages that threaten suspension, arrest or legal action. Don’t press any keys.",
+    "If you’re worried, contact the agency using its official website or a number you look up yourself.",
+    "Never confirm your Social Security number to someone who called you.",
+    "No government agency asks for payment in gift cards, wire transfers or cryptocurrency."
+  ],
+  "recoverySteps": [
+    "If you shared your Social Security number, consider placing a fraud alert or credit freeze with the credit bureaus.",
+    "If you paid with gift cards, contact the gift card company right away using the number on the card or its official site. Keep the receipts.",
+    "Report government impersonation to the agency’s inspector general and at ReportFraud.ftc.gov.",
+    "Expect follow-up calls. Scammers often call back pretending to help you recover the money."
+  ],
+  "recordingPools": [
+    "ssa_suspension"
+  ]
+}

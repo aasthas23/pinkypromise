@@ -1,14 +1,35 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+import logging
+import os
 import random
+from datetime import datetime, timedelta
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.schemas import AnalysisResult, SessionCreateRequest, SessionResponse, TranscriptAnalysisRequest
 from app.services.analysis import evaluate_transcript
+from app.simulator.api import router as simulator_router
+from app.simulator.dialogue import create_dialogue
+from app.simulator.service import SimulatorService
+
+logging.basicConfig(level=os.environ.get('LOG_LEVEL', 'INFO'))
 
 app = FastAPI(title="Pink Promise API")
+
+# The API uses no cookies or auth headers, so a wildcard origin is safe for local
+# dev and Expo web. Set ALLOWED_ORIGINS (comma-separated) to lock it down.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in os.environ.get('ALLOWED_ORIGINS', '*').split(',')],
+    allow_methods=['GET', 'POST', 'DELETE'],
+    allow_headers=['Content-Type'],
+    expose_headers=['Content-Disposition'],
+)
+
+app.state.simulator = SimulatorService(create_dialogue())
+app.include_router(simulator_router)
 
 SESSION_STORE: dict[str, dict[str, str]] = {}
 
