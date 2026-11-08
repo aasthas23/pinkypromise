@@ -9,7 +9,7 @@ import lovingImg from "@/assets/penny-loving.png";
 import alertImg from "@/assets/penny-alert.png";
 import { cn } from "@/lib/utils";
 
-type Mood = "float" | "wave" | "bounce" | "happy" | "think" | "curious" | "loving" | "alert";
+type Mood = "float" | "wave" | "bounce" | "happy" | "think" | "curious" | "loving" | "alert" | "confident" | "worried" | "playful" | "focused";
 
 const poses = {
   float: { image: readyImg, label: "Penny giving an encouraging thumbs-up" },
@@ -20,6 +20,10 @@ const poses = {
   curious: { image: curiousImg, label: "Penny curiously tilting her head" },
   loving: { image: lovingImg, label: "Penny smiling and hugging a heart" },
   alert: { image: alertImg, label: "Penny raising her paw to remind you to pause" },
+  confident: { image: readyImg, label: "Penny feeling confident and ready" },
+  worried: { image: thinkingImg, label: "Penny looking concerned about a risky pattern" },
+  playful: { image: celebratingImg, label: "Penny playful and energized" },
+  focused: { image: thinkingImg, label: "Penny staying focused on the details" },
 };
 
 // Each gesture has anticipation, action, and a resting beat rather than constant bobbing.
@@ -32,6 +36,10 @@ const gestures: Record<Mood, TargetAndTransition> = {
   curious: { rotate: [0, 9, 9, -4, 0], y: [0, -3, -3, -1, 0], transition: { duration: 2.8, repeat: Infinity, repeatDelay: 2.5 } },
   loving: { rotate: [0, -4, 4, 0], scale: [1, 1.035, 1.035, 1], transition: { duration: 3, repeat: Infinity, repeatDelay: 2 } },
   alert: { rotate: [0, -5, 5, -3, 0], y: [0, -4, -4, -2, 0], transition: { duration: 1.2, repeat: Infinity, repeatDelay: 4 } },
+  confident: { y: [0, -4, -6, -2, 0], rotate: [0, -2, 2, 0], scaleX: [1, 1.04, 1, 1.02, 1], transition: { duration: 2.5, repeat: Infinity, repeatDelay: 2.8 } },
+  worried: { y: [0, -2, -2, 0], rotate: [0, -4, 4, 0], transition: { duration: 2.2, repeat: Infinity, repeatDelay: 3.1 } },
+  playful: { y: [0, 3, -14, 0, -6, 0], scaleX: [1, 1.08, 0.97, 1.04, 0.99, 1], scaleY: [1, 0.94, 1.06, 0.96, 1.03, 1], rotate: [0, -7, 5, -4, 3, 0], transition: { duration: 1.4, repeat: Infinity, repeatDelay: 2.4 } },
+  focused: { rotate: [0, -3, 2, 0], y: [0, -2, -3, 0], transition: { duration: 2.6, repeat: Infinity, repeatDelay: 2.7 } },
 };
 
 export function Mascot({ mood = "float", size = 160, className, alt }: { mood?: Mood | undefined; size?: number; className?: string; alt?: string }) {

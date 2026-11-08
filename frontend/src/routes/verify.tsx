@@ -33,7 +33,7 @@ function Verify() {
           {result === "verified" ? <CheckCircle2 className="size-7 shrink-0" /> : <AlertTriangle className="size-7 shrink-0" />}
           <div className="min-w-0 flex-1">
             <h2 className="text-lg font-black">{result === "verified" ? "Caller verified!" : result === "expired" ? "Code expired" : "Caller not verified"}</h2>
-            <p className="mt-1 text-sm leading-relaxed">{result === "verified" ? "The employee's code matches this demo session." : result === "expired" ? "Ask the employee for a new code, then check again." : "That code doesn't match an active employee session. Don't share personal information; contact T-Mobile through an official channel."}</p>
+            <p className="mt-1 text-sm leading-relaxed">{result === "verified" ? "The employee's code matches this session." : result === "expired" ? "Ask the employee for a new code, then check again." : "That code doesn't match an active employee session. Don't share personal information; contact T-Mobile through an official channel."}</p>
           </div>
           {result === "verified" && <Mascot mood="happy" size={60} />}
         </section>}
@@ -50,6 +50,6 @@ function Verify() {
       </aside>
     </div>
 
-    <p className="border-t border-border pt-4 text-sm text-muted-foreground">Never share your password or account login codes. This prototype checks demo codes only.</p>
+    <p className="border-t border-border pt-4 text-sm text-muted-foreground">Never share your password or account login codes. This prototype checks caller codes only.</p>
   </div>;
 }

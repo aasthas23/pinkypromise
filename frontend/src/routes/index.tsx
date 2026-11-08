@@ -13,11 +13,13 @@ function Home() {
     <p className="flex items-center gap-2 text-sm font-bold text-primary"><Heart className="size-4" />Hey, Alex. Penny’s got your back.</p>
     <h1 className="mt-2 text-3xl font-extrabold">Pinky Promise</h1>
     <div className="mt-4 flex items-center justify-between gap-3">
-      <div className="min-w-0">
+      <div className="min-w-0 flex-1">
         <h2 className="text-2xl font-bold leading-tight">Big heart.<br />Sharper instincts.</h2>
         <p className="mt-2 max-w-sm text-sm leading-relaxed text-muted-foreground">A familiar voice isn’t always a friendly one. Let’s check together.</p>
       </div>
-      <Mascot mood="loving" size={140} className="shrink-0 max-sm:max-w-28" />
+      <div className="flex items-end justify-center self-end pr-1 pt-2">
+        <Mascot mood="happy" size={150} className="shrink-0 max-sm:max-w-28" />
+      </div>
     </div>
     <Button asChild variant="hero" size="lg" className="mt-5 w-full"><Link to="/verify">Verify a caller<ArrowRight /></Link></Button>
   </section>

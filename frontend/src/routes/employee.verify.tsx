@@ -9,7 +9,7 @@ import { useDemo } from "@/lib/store";
 import { verificationService } from "@/lib/services";
 import { useCountdown } from "@/lib/use-countdown";
 export const Route = createFileRoute("/employee/verify")({
-  head: () => ({ meta: [{ title: "Employee Caller Codes — Pinky Promise" }, { name: "description", content: "Issue caller codes for customers to check in Pinky Promise." }, { property: "og:title", content: "Employee Caller Codes — Pinky Promise" }, { property: "og:description", content: "Generate a demo code for your customer." }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary" }] }),
+  head: () => ({ meta: [{ title: "Employee Caller Codes — Pinky Promise" }, { name: "description", content: "Issue caller codes for customers to check in Pinky Promise." }, { property: "og:title", content: "Employee Caller Codes — Pinky Promise" }, { property: "og:description", content: "Generate a caller code for your customer." }, { property: "og:type", content: "website" }, { name: "twitter:card", content: "summary" }] }),
   component: CallerCodes,
 });
 function CallerCodes() {
@@ -27,7 +27,7 @@ function CallerCodes() {
     if (!selected) return;
     setLoading(true); setError("");
     try { await verificationService.generate(selected.id); }
-    catch { setError("Couldn't send the demo code. Please try again."); }
+    catch { setError("Couldn't send the caller code. Please try again."); }
     finally { setLoading(false); }
   };
   return <div className="mx-auto max-w-lg space-y-6">
@@ -44,7 +44,7 @@ function CallerCodes() {
     <section className="space-y-5 border-y py-6">
       <div><p className="text-sm text-muted-foreground">Selected customer</p><h2 className="text-xl font-black">{selected?.name ?? "No customer selected"}</h2>{selected && <p className="text-sm text-muted-foreground">ID: {selected.id}</p>}</div>
       {session && <><p className="rounded-xl bg-pink py-6 text-center text-5xl font-black text-primary-deep" aria-label={`Employee code ${session.code}`}>{session.code}</p>
-        <p role="status" className="text-center text-sm text-muted-foreground">Demo code sent to {session.customerName}.</p>
+        <p role="status" className="text-center text-sm text-muted-foreground">Caller code sent to {session.customerName}.</p>
         <p className="text-center font-bold">{session.status === "pending" ? `Waiting for customer · ${secs}s remaining` : session.status === "verified" ? "Customer verified your code" : "Code expired — issue a new one"}</p>
         {session.status === "verified" && <p role="status" className="flex items-center justify-center gap-2 text-mint-foreground"><CheckCircle2 />Caller verification complete</p>}</>}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}

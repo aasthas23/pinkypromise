@@ -34,9 +34,9 @@ function Practice() {
         <div className="flex items-center justify-between gap-4"><div><h2 className="text-xl font-black">Biweekly scam simulations</h2><p className="mt-1 text-sm text-muted-foreground">One call every two weeks · optional</p></div><Switch id="biweekly-calls" aria-label="Opt in to biweekly calls" checked={s.biweeklyOptIn} onCheckedChange={callPreferencesService.setBiweeklyOptIn} /></div>
         <p className="mt-3 text-sm text-muted-foreground">With your permission, T-Mobile would send simulated scam calls and disclose that the call was fake at the end. Results help analysts understand which tactics need more practice. You can opt out anytime.</p>
         <p role="status" className="mt-3 font-bold text-primary-deep">{s.biweeklyOptIn ? "You're opted in" : "You're opted out"}</p>
-        {s.biweeklyOptIn && nextDate && <p className="mt-1 text-sm text-muted-foreground">Demo next call: {new Date(nextDate).toLocaleDateString()}</p>}
+        {s.biweeklyOptIn && nextDate && <p className="mt-1 text-sm text-muted-foreground">Next practice call: {new Date(nextDate).toLocaleDateString()}</p>}
         {s.biweeklyOptIn && <Button variant="soft" className="mt-3" onClick={() => { setSource("biweekly"); setInCall(true); }}>Preview a biweekly call</Button>}
-        <p className="mt-3 text-xs text-muted-foreground">Demo preference only. No real calls are scheduled or placed.</p>
+        <p className="mt-3 text-xs text-muted-foreground">Practice preference only. No real calls are scheduled or placed.</p>
       </section>
       <h2 className="mt-6 text-xl font-black">Start a practice call</h2>
       <p className="mt-1 text-sm text-muted-foreground">Explore calls you might receive from someone claiming to be T-Mobile.</p>
@@ -60,7 +60,7 @@ function Practice() {
       </div>
       <div className="mt-6 flex flex-wrap items-center gap-4">
         <Button variant="hero" size="lg" className="w-full sm:w-auto" onClick={() => { setSource("practice"); setInCall(true); }}>Start Practice Call</Button>
-        <p className="text-sm text-muted-foreground">Demo Simulation · scripted, fictional, nothing is recorded.</p>
+        <p className="text-sm text-muted-foreground">Practice simulation · scripted, fictional, nothing is recorded.</p>
       </div>
       <AnimatePresence>{inCall && <CallScreen difficulty={pick} source={source} onClose={() => setInCall(false)} />}</AnimatePresence>
     </div>
@@ -101,7 +101,7 @@ function CallScreen({ difficulty, source, onClose }: { difficulty: Difficulty; s
       ) : disclosed ? (
         <div className="m-auto flex max-w-lg flex-col items-center gap-4 px-6 text-center"><Mascot mood="happy" size={130} /><h2 className="text-3xl font-black">This was a fake call.</h2><p>A safe scam simulation — not a real request from T-Mobile. Your account wasn't at risk.</p><p className="text-sm text-ink-foreground/70">Your demo results help identify scam tactics to practice next.</p><Button variant="hero" size="lg" onClick={finish}>See my results</Button></div>
       ) : (<>
-        <div className="flex items-center justify-between p-4 text-sm font-bold text-ink-foreground/70"><span className="rounded-full bg-ink-foreground/10 px-3 py-1">Demo Simulation · {sc.label}</span><span aria-live="off">{String(Math.floor(secs / 60)).padStart(2, "0")}:{String(secs % 60).padStart(2, "0")}</span></div>
+        <div className="flex items-center justify-between p-4 text-sm font-bold text-ink-foreground/70"><span className="rounded-full bg-ink-foreground/10 px-3 py-1">Practice call · {sc.label}</span><span aria-live="off">{String(Math.floor(secs / 60)).padStart(2, "0")}:{String(secs % 60).padStart(2, "0")}</span></div>
         <div className="flex flex-1 flex-col items-center justify-center gap-6 px-4">
           <div className="relative">
             {!reduce && <motion.span className="absolute inset-0 rounded-full bg-primary/30" animate={{ scale: [1, 1.5], opacity: [0.6, 0] }} transition={{ duration: 1.6, repeat: Infinity }} />}

@@ -25,7 +25,7 @@ function Profile() {
           <li key={t} className="flex items-center gap-4 p-5"><I className="size-5 text-primary" /><span className="flex-1 font-bold">{t}</span><span className="text-sm text-muted-foreground">{d}</span></li>
         ))}
       </ul>
-      <Button variant="soft" onClick={resetDemo}><RotateCcw /> Reset demo data</Button>
+      <Button variant="soft" onClick={resetDemo}><RotateCcw /> Reset saved data</Button>
     </div>
   );
 }

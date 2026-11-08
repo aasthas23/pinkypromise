@@ -72,8 +72,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               <RoleSwitch employee={employee} />
             </div>
 
-            <Link to="/profile" aria-label="Go to profile" className={cn("grid size-9 shrink-0 place-items-center rounded-full bg-primary-deep text-sm font-black text-primary-foreground transition-colors hover:bg-primary-deep/90", pathname === "/profile" && "ring-2 ring-primary/50")}>
-              {employee ? <Users className="size-4" /> : <User className="size-4" />}
+            <Link to="/profile" aria-label="Go to profile" className={cn("grid size-9 shrink-0 place-items-center overflow-hidden rounded-full bg-primary-deep text-sm font-black text-primary-foreground transition-colors hover:bg-primary-deep/90", pathname === "/profile" && "ring-2 ring-primary/50")}>
+              <img src={promiseLogo} alt="Pinky Promise" className="size-8 rounded-full object-cover" />
             </Link>
           </div>
         </header>

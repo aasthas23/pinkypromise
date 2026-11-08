@@ -4,7 +4,7 @@ import { AlertTriangle, ChevronRight, Gauge, PhoneCall, ShieldCheck, Users } fro
 import { PageTitle } from "@/components/safe/AppShell";
 import { riskTone, useCustomers } from "@/lib/use-customers";
 import { useDemo } from "@/lib/store";
-import { MascotBubble } from "@/components/safe/Mascot";
+import { Mascot, MascotBubble } from "@/components/safe/Mascot";
 import { AnalystCharts } from "@/components/safe/AnalystCharts";
 import { Button } from "@/components/ui/button";
 import { TrendingDown, Activity } from "lucide-react";
@@ -26,14 +26,14 @@ function Overview() {
   const sims = list.reduce((a, c) => a + c.simulations, 0);
   const need = list.filter((c) => c.vulnerability >= 60).length;
   const kpis = [
-    { l: "Customers tracked", v: list.length, i: Users },
-    { l: "Avg. vulnerability", v: avg, i: Gauge },
-    { l: "Completed simulations", v: sims, i: PhoneCall },
-    { l: "Need extra practice", v: need, i: AlertTriangle },
+    { l: "Customers tracked", v: list.length, i: Users, mood: "confident" },
+    { l: "Avg. vulnerability", v: avg, i: Gauge, mood: "worried" },
+    { l: "Completed simulations", v: sims, i: PhoneCall, mood: "playful" },
+    { l: "Need extra practice", v: need, i: AlertTriangle, mood: "focused" },
   ];
   return (
     <div className="space-y-6">
-      <PageTitle title="Analysts board" sub="Small signals. Smarter protection."><span className="flex items-center gap-2 rounded-full bg-mint px-3 py-1.5 text-xs font-bold text-mint-foreground"><Activity className="size-3.5" />Demo insights</span></PageTitle>
+      <PageTitle title="Analysts board" sub="Small signals. Smarter protection."><span className="flex items-center gap-2 rounded-full bg-mint px-3 py-1.5 text-xs font-bold text-mint-foreground"><Activity className="size-3.5" />Live insights</span></PageTitle>
       {verification?.status === "pending" && (
         <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
           <Link to="/employee/verify" className="flex items-center gap-3 rounded-md bg-primary p-4 font-bold text-primary-foreground">
@@ -42,9 +42,16 @@ function Overview() {
         </motion.div>
       )}
       <div className="grid grid-cols-1 gap-4">
-        {kpis.map(({ l, v, i: I }, idx) => (
+        {kpis.map(({ l, v, i: I, mood }, idx) => (
           <div key={l} className={cn("rounded-xl border p-4 shadow-soft sm:p-5", idx === 0 ? "bg-primary text-primary-foreground" : idx === 1 ? "bg-pink text-primary-deep" : idx === 2 ? "bg-mint text-mint-foreground" : "bg-peach text-peach-foreground")}>
-            <I className={cn("size-5", idx === 0 ? "text-primary-foreground" : "text-current")} /><p className="mt-3 text-4xl font-black">{v}</p><p className="text-sm font-bold opacity-70">{l}</p>
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <I className={cn("size-5", idx === 0 ? "text-primary-foreground" : "text-current")} />
+                <p className="mt-3 text-4xl font-black">{v}</p>
+                <p className="text-sm font-bold opacity-70">{l}</p>
+              </div>
+              <Mascot mood={mood as any} size={54} className="shrink-0" />
+            </div>
           </div>
         ))}
       </div>
