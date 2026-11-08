@@ -9,7 +9,7 @@
  * Lower is better, as the results page explains.
  */
 import type { Difficulty } from "./mock-data";
-import type { Debrief, OutcomeDefinition, TranscriptEntry } from "./simulator-api";
+import type { Debrief, LiveEntry, OutcomeDefinition, TranscriptEntry } from "./simulator-api";
 import type { SimResult, TranscriptLine } from "./store";
 
 const OUTCOME_BASE: Record<Debrief["outcome"], number> = {
@@ -72,7 +72,10 @@ export function toTranscriptLines(
     const flag = flagId ? (TACTIC_FOR_FLAG[flagId] ?? titles.get(flagId)) : undefined;
     const line: TranscriptLine = {
       who: e.speaker === "caller" ? "caller" : e.speaker === "user" ? "you" : "system",
-      text: e.speaker === "sms" ? `Text message from ${e.sender ?? "unknown"}: ${e.text}` : e.text,
+      text:
+        e.speaker === "sms"
+          ? `Text message from ${"sender" in e ? (e.sender ?? "unknown") : "unknown"}: ${e.text}`
+          : e.text,
     };
     if (flag) line.flag = flag;
     return line;
@@ -81,7 +84,7 @@ export function toTranscriptLines(
 
 export function debriefToSimResult(
   d: Debrief,
-  entries: TranscriptEntry[],
+  entries: (TranscriptEntry | LiveEntry)[],
   difficulty: Difficulty,
   source: "practice" | "biweekly",
   completedAt = Date.now(),

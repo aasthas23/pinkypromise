@@ -26,22 +26,11 @@ import { Switch } from "@/components/ui/switch";
 import { useDemo } from "@/lib/store";
 import { callPreferencesService } from "@/lib/services";
 import { nextCallDate } from "@/lib/analytics";
-import {
-  listenOnce,
-  speakLine,
-  speechInputSupported,
-  stopSpeaking,
-  unlockSpeech,
-  type Listening,
-} from "@/lib/call-voice";
-import type {
-  OutcomeDefinition,
-  ScenarioSummary,
-  SessionView,
-  TranscriptEntry,
-} from "@/lib/simulator-api";
+import { unlockSpeech } from "@/lib/call-voice";
+import { MicListener, VoicePlayer } from "@/lib/live-audio";
+import type { LiveEvent, LiveSession, OutcomeDefinition } from "@/lib/simulator-api";
 import { DEFAULT_OUTCOMES } from "@/lib/sim-result";
-import { CallBriefing } from "@/components/safe/CallBriefing";
+import { CallBriefing, type CallMode } from "@/components/safe/CallBriefing";
 
 export const Route = createFileRoute("/practice")({
   head: () => ({
@@ -193,10 +182,10 @@ function Practice() {
 }
 
 /**
- * Practice call. Tries the live simulator first: the backend runs the T-Mobile
- * scenario step by step, Claude writes the caller's lines, and the browser
- * speaks them. If the practice server can't be reached, the scripted demo
- * call plays instead so the demo never breaks.
+ * Practice call. Starts an AI call: the server picks a fictional T-Mobile scenario
+ * grounded in real scam transcripts, Claude holds the conversation, and OpenAI
+ * speech transcribes the user and voices the caller. If the practice server or
+ * its AI isn't available, the scripted demo call plays instead so the demo never breaks.
  */
 function CallScreen({
   difficulty,
@@ -209,22 +198,23 @@ function CallScreen({
 }) {
   const [state, setState] = useState<
     | { mode: "connecting" }
-    | { mode: "live"; session: SessionView; scenario: ScenarioSummary | undefined }
+    | { mode: "ai"; session: LiveSession; outcomes: OutcomeDefinition[] }
     | { mode: "scripted"; reason: string }
   >({ mode: "connecting" });
   // Explain the purpose before anything rings, so no one worries they're "actually being scammed".
-  const [briefed, setBriefed] = useState(false);
+  // ...and lets them choose a text chat (default) or a voice call.
+  const [mode, setMode] = useState<CallMode | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    simulationService.startLiveCall(difficulty).then(
-      ({ session, scenario }) => !cancelled && setState({ mode: "live", session, scenario }),
-      () =>
+    Promise.all([simulationService.aiStatus(), simulationService.startAiCall(difficulty)]).then(
+      ([status, session]) =>
+        !cancelled && setState({ mode: "ai", session, outcomes: status.learningOutcomes }),
+      (e: unknown) =>
         !cancelled &&
         setState({
           mode: "scripted",
-          reason:
-            "The live practice caller isn’t available right now, so this is the scripted demo call.",
+          reason: `${e instanceof Error ? e.message : "The practice server is unavailable."} Playing the scripted demo call instead.`,
         }),
     );
     return () => {
@@ -232,13 +222,14 @@ function CallScreen({
     };
   }, [difficulty]);
 
-  if (!briefed)
+  if (!mode)
     return (
       <CallBriefing
         title={scenarios.find((x) => x.id === difficulty)?.title ?? "Practice call"}
-        outcomes={(state.mode === "live" && state.scenario?.learningOutcomes) || DEFAULT_OUTCOMES}
+        outcomes={state.mode === "ai" ? state.outcomes : DEFAULT_OUTCOMES}
         handsOnFlags={state.mode !== "scripted"}
-        onStart={() => setBriefed(true)}
+        aiCaller={state.mode !== "scripted"}
+        onStart={setMode}
         onCancel={onClose}
       />
     );
@@ -251,11 +242,11 @@ function CallScreen({
         notice={state.reason}
       />
     );
-  if (state.mode === "live")
+  if (state.mode === "ai")
     return (
-      <LiveCall
+      <AiCall
         initial={state.session}
-        scenario={state.scenario}
+        mode={mode}
         difficulty={difficulty}
         source={source}
         onClose={onClose}
@@ -279,106 +270,69 @@ function CallScreen({
   );
 }
 
-/** Reveals transcript entries one at a time, speaking caller lines aloud. */
-function usePlayback(
-  entries: TranscriptEntry[],
-  voiceOn: boolean,
-  voice: { pitch?: number; rate?: number } | null | undefined,
-  halted: boolean,
-) {
-  const [played, setPlayed] = useState(0);
-  const [speakingId, setSpeakingId] = useState<string>();
-  const entriesRef = useRef(entries);
-  const voiceOnRef = useRef(voiceOn);
-  useEffect(() => {
-    entriesRef.current = entries;
-  });
-  useEffect(() => {
-    voiceOnRef.current = voiceOn;
-    if (!voiceOn) stopSpeaking();
-  }, [voiceOn]);
+type Line = { id: string; speaker: "caller" | "user" | "system"; text: string };
+type Phase = "ringing" | "thinking" | "caller" | "listening" | "hearing" | "sending" | "ended";
+const SILENCE_PROMPT_MS = 9000;
+/** Text chat: each caller sentence appears after a short typing-like beat instead of reading time. */
+const CHAT_PACE_MS = (text: string) => Math.min(1200, 250 + text.length * 8);
 
-  // Key on the current entry's id so a response that adds no lines can't restart the line in progress.
-  const currentId = !halted && played < entries.length ? entries[played]?.id : undefined;
-  useEffect(() => {
-    if (!currentId) return;
-    const entry = entriesRef.current.find((e) => e.id === currentId);
-    if (!entry) return;
-    const ac = new AbortController();
-    const next = () => {
-      if (ac.signal.aborted) return;
-      setSpeakingId(undefined);
-      setPlayed((p) => p + 1);
-    };
-    const t = setTimeout(
-      () => {
-        if (entry.speaker !== "caller") return next();
-        setSpeakingId(entry.id);
-        void speakLine(entry.text, { enabled: voiceOnRef.current, voice, signal: ac.signal }).then(
-          next,
-        );
-      },
-      entry.speaker === "caller" ? 450 : entry.speaker === "sms" ? 900 : 0,
-    );
-    return () => {
-      clearTimeout(t);
-      ac.abort();
-    };
-  }, [currentId, voice]);
+const STATUS: Record<Phase, string> = {
+  ringing: "",
+  thinking: "The caller is responding…",
+  caller: "",
+  listening: "Listening… just talk when you’re ready.",
+  hearing: "Hearing you…",
+  sending: "Transcribing…",
+  ended: "",
+};
 
-  useEffect(() => () => stopSpeaking(), []);
-
-  if (halted) return { visible: entries, playing: false, speakingId: undefined };
-  const current = entries[played];
-  const showing =
-    played < entries.length && current?.speaker === "caller" && speakingId === current.id
-      ? played + 1
-      : Math.min(played, entries.length);
-  return { visible: entries.slice(0, showing), playing: played < entries.length, speakingId };
-}
-
-function LiveCall({
+function AiCall({
   initial,
-  scenario,
+  mode,
   difficulty,
   source,
   onClose,
 }: {
-  initial: SessionView;
-  scenario: ScenarioSummary | undefined;
+  initial: LiveSession;
+  /** text: typed chat, caller voice off by default. voice: microphone + caller voice. */
+  mode: CallMode;
   difficulty: Difficulty;
   source: "practice" | "biweekly";
   onClose: () => void;
 }) {
-  const fallback = scenarios.find((s) => s.id === difficulty) ?? scenarios[0];
+  const label = scenarios.find((s) => s.id === difficulty)?.label;
+  const sid = initial.sessionId;
   const navigate = useNavigate();
   const reduce = useReducedMotion();
-  const [session, setSession] = useState(initial);
-  const [pending, setPending] = useState(false);
+  const [lines, setLines] = useState<Line[]>([]);
+  const [phase, setPhase] = useState<Phase>("ringing");
   const [error, setError] = useState<string>();
-  const [voiceOn, setVoiceOn] = useState(true);
+  // "text": typed chat (no mic). The mic button can switch a text chat to voice.
+  const [mic, setMic] = useState<"text" | "off" | "on" | "muted" | "unavailable">(
+    mode === "text" ? "text" : "off",
+  );
+  const [voiceOn, setVoiceOn] = useState(mode === "voice");
   const [draft, setDraft] = useState("");
-  const [listening, setListening] = useState<Listening | null>(null);
-  const [hungUp, setHungUp] = useState(false);
-  const [finishing, setFinishing] = useState(false);
+  const [callerSpeaking, setCallerSpeaking] = useState(false);
+  const [answeredAt, setAnsweredAt] = useState<number | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [flagsTapped, setFlagsTapped] = useState(0);
   const [flagNote, setFlagNote] = useState<string>();
+  const [finishing, setFinishing] = useState(false);
+  const [savedFile, setSavedFile] = useState<string | null>(null);
   const txRef = useRef<HTMLDivElement>(null);
+  const player = useRef<VoicePlayer | null>(null);
+  const listener = useRef<MicListener | null>(null);
+  const abort = useRef<AbortController | null>(null);
+  const streaming = useRef(false);
+  const ending = useRef(false);
+  const voiceRef = useRef(mode === "voice");
+  const shownCaller = useRef<string | undefined>(undefined);
+  const silenceTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const promptedSilence = useRef(false);
 
-  const caller = scenario?.caller;
-  const callerName = caller?.displayName ?? fallback?.caller.replace(/"/g, "") ?? "Unknown caller";
-  const { visible, playing, speakingId } = usePlayback(
-    session.transcript,
-    voiceOn,
-    caller?.voice,
-    hungUp,
-  );
-  const ringing = session.status === "ringing";
-  const callOver = session.status === "ended" && !playing;
-  const node = session.node;
-  const canRespond = session.status === "active" && !playing && !pending && !listening && !!node;
-  const freeText = session.freeTextAvailable && !!node?.acceptsSpeech;
+  const callOver = phase === "ended";
+  const active = !callOver && phase !== "ringing";
 
   useEffect(() => {
     const t = setInterval(() => setNow(Date.now()), 1000);
@@ -386,35 +340,182 @@ function LiveCall({
   }, []);
   useEffect(() => {
     txRef.current?.scrollTo({ top: 99999, behavior: "smooth" });
-  }, [visible.length, pending, canRespond]);
-  // The flag confirmation fades after a moment so the status line frees up.
-  useEffect(() => {
-    if (!flagNote) return;
-    const t = setTimeout(() => setFlagNote(undefined), 3000);
-    return () => clearTimeout(t);
-  }, [flagNote, flagsTapped]);
+  }, [lines.length, phase]);
 
-  const act = async (fn: () => Promise<SessionView>) => {
-    setPending(true);
-    setError(undefined);
-    try {
-      setSession(await fn());
-      return true;
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong.");
-      return false;
-    } finally {
-      setPending(false);
+  const clearSilence = () => clearTimeout(silenceTimer.current);
+
+  const endLocally = () => {
+    clearSilence();
+    abort.current?.abort();
+    player.current?.stop();
+    listener.current?.stop();
+    setCallerSpeaking(false);
+    setPhase("ended");
+  };
+
+  const listen = () => {
+    if (ending.current) return endLocally();
+    setPhase("listening");
+    if (listener.current) listener.current.paused = false;
+    clearSilence();
+    // If they go quiet on a voice call, the caller checks in once, like a real call.
+    if (!promptedSilence.current && listener.current && !listener.current.muted) {
+      silenceTimer.current = setTimeout(() => {
+        promptedSilence.current = true;
+        void send({ silence: true });
+      }, SILENCE_PROMPT_MS);
     }
   };
 
-  const hangUp = async () => {
-    listening?.stop();
-    stopSpeaking();
-    setHungUp(true);
-    if (session.status !== "active") return;
+  const showCaller = (entryId: string, text: string) => {
+    shownCaller.current = entryId;
+    setLines((ls) => {
+      const i = ls.findIndex((l) => l.id === entryId);
+      if (i < 0) return [...ls, { id: entryId, speaker: "caller", text }];
+      const next = ls.slice();
+      next[i] = { ...next[i]!, text: `${next[i]!.text} ${text}` };
+      return next;
+    });
+  };
+
+  /** Plays one streamed reply: each sentence is voiced as soon as it arrives, and shown as it's spoken. */
+  const consume = async (events: AsyncGenerator<LiveEvent>) => {
+    streaming.current = true;
+    setPhase("thinking");
     try {
-      setSession(await simulationService.hangUp(session.sessionId));
+      for await (const ev of events) {
+        if (ev.type === "user") {
+          setLines((ls) => [...ls, { id: ev.entry.id, speaker: "user", text: ev.entry.text }]);
+          setPhase("thinking");
+        } else if (ev.type === "no_speech") {
+          setError("Sorry, I didn’t catch that. Try again, or type your reply.");
+        } else if (ev.type === "caller") {
+          player.current?.enqueue({
+            id: ev.utteranceId,
+            url: initial.speechAvailable ? simulationService.aiVoiceUrl(sid, ev.utteranceId) : null,
+            speak: voiceRef.current,
+            text: ev.text,
+            onStart: () => {
+              setCallerSpeaking(true);
+              if (listener.current) listener.current.callerSpeaking = true;
+              setPhase("caller");
+              showCaller(ev.entryId, ev.text);
+            },
+            onEnd: () => {},
+          });
+        } else if (ev.type === "done") {
+          if (ev.ended) ending.current = true;
+          setSavedFile(ev.session.transcriptFile);
+        } else if (ev.type === "error") {
+          setError(ev.message);
+        }
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "The call connection had a problem.");
+    } finally {
+      streaming.current = false;
+      if (!player.current?.busy) idle();
+    }
+  };
+
+  // When the caller has finished speaking (and nothing more is streaming), it's the user's turn.
+  const idle = () => {
+    setCallerSpeaking(false);
+    if (listener.current) listener.current.callerSpeaking = false;
+    if (streaming.current) return;
+    if (ending.current) return endLocally();
+    listen();
+  };
+
+  const send = async (
+    reply: { audio: Blob } | { text: string } | { silence: true },
+    interrupted = false,
+  ) => {
+    if (ending.current) return;
+    clearSilence();
+    setError(undefined);
+    if (listener.current) listener.current.paused = true;
+    setPhase("audio" in reply ? "sending" : "thinking");
+    const heard = interrupted ? (player.current?.heard.slice(-20) ?? []) : undefined;
+    abort.current = new AbortController();
+    await consume(
+      simulationService.sayToAiCaller(
+        sid,
+        reply,
+        interrupted ? { interrupted, heard: heard ?? [] } : {},
+        abort.current.signal,
+      ),
+    );
+  };
+
+  const startMic = async () => {
+    if (!MicListener.supported()) {
+      setMic("unavailable");
+      setError(
+        "Voice replies aren’t supported in this browser. You can type your replies instead.",
+      );
+      return;
+    }
+    let interruptedNext = false;
+    const l = new MicListener({
+      onSpeechStart: () => {
+        clearSilence();
+        // Barge-in: talking over the caller stops them, like a real call.
+        if (player.current?.busy || streaming.current) {
+          interruptedNext = true;
+          player.current?.stop();
+          abort.current?.abort();
+          setCallerSpeaking(false);
+        }
+        setPhase("hearing");
+      },
+      onUtterance: (audio) => {
+        const interrupted = interruptedNext;
+        interruptedNext = false;
+        void send({ audio }, interrupted);
+      },
+    });
+    try {
+      await l.start();
+      listener.current = l;
+      l.paused = streaming.current || !!player.current?.busy;
+      setMic("on");
+    } catch (e) {
+      setMic("unavailable");
+      setError(
+        e instanceof Error
+          ? e.message
+          : "The microphone isn’t available. You can type your replies.",
+      );
+    }
+  };
+
+  const answer = () => {
+    unlockSpeech(); // inside the tap, for iOS
+    player.current = new VoicePlayer(undefined, mode === "text" ? CHAT_PACE_MS : undefined);
+    player.current.unlock();
+    player.current.onIdle = idle;
+    setAnsweredAt(Date.now());
+    if (mode === "voice") void startMic();
+    abort.current = new AbortController();
+    void consume(simulationService.answerAiCall(sid, abort.current.signal));
+  };
+
+  const decline = async () => {
+    try {
+      await simulationService.declineAiCall(sid);
+    } catch {
+      /* ending locally anyway */
+    }
+    endLocally();
+  };
+
+  const hangUp = async () => {
+    ending.current = true;
+    endLocally();
+    try {
+      const v = await simulationService.hangUpAiCall(sid);
+      setSavedFile(v.transcriptFile);
     } catch (e) {
       setError(
         e instanceof Error ? e.message : "Couldn’t reach the practice server to end the call.",
@@ -423,9 +524,8 @@ function LiveCall({
   };
 
   const close = () => {
-    if (session.status === "active")
-      void simulationService.hangUp(session.sessionId).catch(() => {});
-    stopSpeaking();
+    if (active) void simulationService.hangUpAiCall(sid).catch(() => {});
+    endLocally();
     onClose();
   };
   useEffect(() => {
@@ -433,47 +533,45 @@ function LiveCall({
     window.addEventListener("keydown", k);
     return () => window.removeEventListener("keydown", k);
   });
+  useEffect(
+    () => () => {
+      clearTimeout(silenceTimer.current);
+      abort.current?.abort();
+      player.current?.stop();
+      listener.current?.stop();
+    },
+    [],
+  );
 
-  // Hands-on cue spotting: the user flags tactics as they happen. No right/wrong feedback until the debrief.
+  // Hands-on cue spotting: no right/wrong feedback until the debrief.
   const spotRedFlag = () => {
-    const n = flagsTapped + 1;
-    setFlagsTapped(n);
-    setFlagNote(`Red flag ${n} noted. We’ll review it after the call.`);
-    simulationService.spotRedFlag(session.sessionId).catch(() => {
-      setFlagsTapped((c) => Math.max(0, c - 1));
+    setFlagsTapped((n) => n + 1);
+    setFlagNote("Red flag noted. We’ll review it after the call.");
+    setTimeout(() => setFlagNote(undefined), 4000); // give the status line back
+    simulationService.spotRedFlag(sid, shownCaller.current).catch(() => {
       setFlagNote("Couldn’t save that flag. Try tapping again.");
     });
   };
 
-  const answer = () => {
-    unlockSpeech(); // must happen inside the tap for iOS to allow speech
-    void act(() => simulationService.answer(session.sessionId));
-  };
-  const decline = () => void act(() => simulationService.decline(session.sessionId));
-  const send = async (text: string) => {
-    const t = text.trim();
-    if (!t || !canRespond) return;
-    if (await act(() => simulationService.say(session.sessionId, t))) setDraft("");
-  };
-  const talk = async () => {
-    if (listening) return listening.stop();
-    stopSpeaking();
-    const l = listenOnce();
-    setListening(l);
-    try {
-      const heard = await l.result;
-      setListening(null);
-      if (heard) await act(() => simulationService.say(session.sessionId, heard));
-      else setError("Didn’t catch that. Try again or type your reply.");
-    } catch (e) {
-      setListening(null);
-      setError(e instanceof Error ? e.message : "Voice input failed.");
+  const toggleMute = () => {
+    const l = listener.current;
+    if (!l) {
+      if (mic === "text") {
+        // Switch a text chat to a voice call.
+        voiceRef.current = true;
+        setVoiceOn(true);
+        void startMic();
+      }
+      return;
     }
+    l.muted = !l.muted;
+    setMic(l.muted ? "muted" : "on");
   };
+
   const finish = async () => {
     setFinishing(true);
     try {
-      await simulationService.finishLiveCall(session, difficulty, source);
+      await simulationService.finishAiCall(sid, difficulty, source);
       void navigate({ to: "/results" });
     } catch (e) {
       setFinishing(false);
@@ -481,12 +579,26 @@ function LiveCall({
     }
   };
 
-  const secs =
-    session.answeredAtMs && !callOver
-      ? Math.max(0, Math.floor((now - session.answeredAtMs) / 1000))
-      : 0;
-  const micReady = freeText && speechInputSupported();
+  const secs = answeredAt && !callOver ? Math.max(0, Math.floor((now - answeredAt) / 1000)) : 0;
   const clock = `${String(Math.floor(secs / 60)).padStart(2, "0")}:${String(secs % 60).padStart(2, "0")}`;
+  const ringing = phase === "ringing";
+  const activity = callerSpeaking
+    ? "Caller is speaking"
+    : phase === "hearing"
+      ? "Listening to you"
+      : phase === "listening"
+        ? "Your turn"
+        : phase === "sending"
+          ? "Transcribing"
+          : "Caller is responding";
+  const typing = active && mic !== "on" && mic !== "off";
+  const canType = typing && (phase === "listening" || phase === "hearing");
+  const status =
+    mic === "muted" && phase === "listening"
+      ? "Your mic is muted. Type a reply, or unmute to talk."
+      : mic === "text" && phase === "listening"
+        ? "Your turn. Type your reply."
+        : STATUS[phase];
 
   return (
     <motion.div
@@ -515,7 +627,7 @@ function LiveCall({
           </p>
           <p role="status" className="text-sm text-ink-foreground/70">
             {error ??
-              `${flagsTapped ? `You flagged ${flagsTapped} red flag${flagsTapped > 1 ? "s" : ""}. ` : ""}Your results show which tactics you caught and what to practice next.${session.transcriptFile ? " The call transcript was saved automatically." : ""}`}
+              `${flagsTapped ? `You flagged ${flagsTapped} red flag${flagsTapped > 1 ? "s" : ""}. ` : ""}Your results show which tactics you caught and what to practice next.${savedFile ? " The call transcript was saved automatically." : ""}`}
           </p>
           <Button variant="hero" size="lg" onClick={finish}>
             See my results
@@ -533,24 +645,22 @@ function LiveCall({
                   transition={{ duration: 1.6, repeat: Infinity }}
                 />
               )}
-              {callerName.replace(/\W/g, "")[0]}
+              {initial.callerDisplay.replace(/\W/g, "")[0]}
             </span>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-lg font-black">{callerName}</p>
+              <p className="truncate text-lg font-black">{initial.callerDisplay}</p>
               <p className="truncate text-sm text-ink-foreground/80">
-                {ringing
-                  ? `Incoming · ${caller?.displayNumber ?? "Unknown number"}`
-                  : `${clock} · ${speakingId ? "Caller is speaking" : canRespond ? "Your turn" : "Practice call"}`}
+                {ringing ? `Incoming · ${initial.callerNumber}` : `${clock} · ${activity}`}
               </p>
             </div>
             <span className="shrink-0 rounded-full bg-ink-foreground/10 px-3 py-1 text-xs font-bold text-ink-foreground/80">
-              Demo · {fallback?.label}
+              Demo · {label} · AI caller
             </span>
           </header>
           <div className="mx-auto flex min-h-0 w-full max-w-lg flex-1 flex-col px-4">
             {ringing ? (
               <p className="m-auto text-center text-lg">
-                Fictional caller. Answer to start practicing.
+                Fictional AI caller. Answer to start practicing.
               </p>
             ) : (
               <div
@@ -558,7 +668,7 @@ function LiveCall({
                 aria-live="polite"
                 className="min-h-0 flex-1 space-y-3 overflow-y-auto py-2"
               >
-                {visible.map((l) =>
+                {lines.map((l) =>
                   l.speaker === "system" ? (
                     <p key={l.id} className="text-center text-sm text-ink-foreground/80">
                       {l.text}
@@ -573,68 +683,63 @@ function LiveCall({
                         l.speaker === "user" ? "ml-auto bg-primary" : "bg-ink-foreground/15",
                       )}
                     >
-                      {l.speaker === "sms" && <b>Text from {l.sender}: </b>}
                       {l.text}
                     </motion.p>
                   ),
                 )}
-                {pending && (
-                  <p className="max-w-[85%] rounded-2xl bg-ink-foreground/15 px-4 py-2 text-base">
+                {(phase === "thinking" || phase === "sending") && lines.length > 0 && (
+                  <p
+                    className={cn(
+                      "max-w-[85%] rounded-2xl px-4 py-2 text-base",
+                      phase === "sending" ? "ml-auto bg-primary" : "bg-ink-foreground/15",
+                    )}
+                  >
                     <span aria-hidden>…</span>
-                    <span className="sr-only">Waiting for the caller…</span>
+                    <span className="sr-only">
+                      {phase === "sending" ? "Transcribing your reply…" : "Waiting for the caller…"}
+                    </span>
                   </p>
                 )}
-                {!visible.length && !pending && (
+                {!lines.length && (
                   <p className="text-center text-sm text-ink-foreground/80">Connecting…</p>
                 )}
               </div>
             )}
             {/* One reserved line for status, so messages don't push the layout around. */}
             <p role="status" className="min-h-6 py-1 text-center text-sm text-ink-foreground/80">
-              {error ?? flagNote ?? session.notice ?? ""}
+              {error ?? flagNote ?? status}
             </p>
-            {canRespond && node && (
+            {typing && (
               <div className="space-y-2 pb-2">
-                {node.options.map((o) => (
+                <form
+                  className="flex gap-2"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    const t = draft.trim();
+                    if (!t || !canType) return;
+                    setDraft("");
+                    void send({ text: t });
+                  }}
+                >
+                  <Input
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    maxLength={280}
+                    placeholder="Type your reply…"
+                    aria-label="Your reply to the caller. Don’t type real personal information."
+                    className="h-12 rounded-2xl border-0 bg-ink-foreground/10 text-base text-ink-foreground placeholder:text-ink-foreground/70"
+                  />
                   <Button
-                    key={o.id}
-                    variant="call"
-                    onClick={() =>
-                      void act(() => simulationService.choose(session.sessionId, o.id))
-                    }
-                    className="h-auto w-full justify-start whitespace-normal rounded-2xl px-4 py-3 text-left text-base"
+                    type="submit"
+                    variant="hero"
+                    size="icon"
+                    className="size-12 shrink-0"
+                    disabled={!draft.trim() || !canType}
+                    aria-label="Send reply"
                   >
-                    {o.keypad ? `Press ${o.keypad}` : o.label}
+                    <Send />
                   </Button>
-                ))}
-                {freeText && (
-                  <form
-                    className="flex gap-2"
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      void send(draft);
-                    }}
-                  >
-                    <Input
-                      value={draft}
-                      onChange={(e) => setDraft(e.target.value)}
-                      maxLength={280}
-                      placeholder="Or type your own reply…"
-                      aria-label="Your reply to the caller. Don’t type real personal information."
-                      className="h-12 rounded-2xl border-0 bg-ink-foreground/10 text-base text-ink-foreground placeholder:text-ink-foreground/70"
-                    />
-                    <Button
-                      type="submit"
-                      variant="hero"
-                      size="icon"
-                      className="size-12 shrink-0"
-                      disabled={!draft.trim()}
-                      aria-label="Send reply"
-                    >
-                      <Send />
-                    </Button>
-                  </form>
-                )}
+                </form>
               </div>
             )}
           </div>
@@ -646,7 +751,6 @@ function LiveCall({
                   size="icon"
                   className="size-16"
                   aria-label="Decline call"
-                  disabled={pending}
                   onClick={decline}
                 >
                   <PhoneOff />
@@ -656,7 +760,6 @@ function LiveCall({
                   size="icon"
                   className="size-16"
                   aria-label="Answer call"
-                  disabled={pending}
                   onClick={answer}
                 >
                   <Phone />
@@ -669,17 +772,19 @@ function LiveCall({
                   size="icon"
                   className="size-14"
                   aria-label={
-                    listening
-                      ? "Stop listening"
-                      : micReady
-                        ? "Speak your reply"
-                        : "Voice replies aren’t available in this browser"
+                    mic === "text"
+                      ? "Switch to a voice call (uses your microphone)"
+                      : mic === "unavailable"
+                        ? "Microphone unavailable. Type your replies instead."
+                        : mic === "muted"
+                          ? "Unmute microphone"
+                          : "Mute microphone"
                   }
-                  aria-pressed={!!listening}
-                  disabled={!micReady || (!canRespond && !listening)}
-                  onClick={talk}
+                  aria-pressed={mic === "muted"}
+                  disabled={mic === "unavailable" || mic === "off"}
+                  onClick={toggleMute}
                 >
-                  {listening ? <MicOff /> : <Mic />}
+                  {mic === "on" || mic === "text" ? <Mic /> : <MicOff />}
                 </Button>
                 <Button
                   variant="call"
@@ -687,7 +792,10 @@ function LiveCall({
                   className="size-14"
                   aria-label={voiceOn ? "Mute caller voice" : "Unmute caller voice"}
                   aria-pressed={!voiceOn}
-                  onClick={() => setVoiceOn(!voiceOn)}
+                  onClick={() => {
+                    voiceRef.current = !voiceOn;
+                    setVoiceOn(!voiceOn);
+                  }}
                 >
                   {voiceOn ? <Volume2 /> : <VolumeX />}
                 </Button>
@@ -705,7 +813,6 @@ function LiveCall({
                   size="icon"
                   className="size-14"
                   aria-label={`That’s a red flag${flagsTapped ? ` (${flagsTapped} flagged)` : ""}`}
-                  disabled={session.status !== "active"}
                   onClick={spotRedFlag}
                 >
                   <Flag />

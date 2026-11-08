@@ -2,6 +2,14 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Load backend/.env before anything reads configuration, however uvicorn was started.
+# Variables already set in the environment win. Tests opt out (see tests/conftest.py).
+if not os.environ.get('SCAM_COACH_SKIP_DOTENV'):
+    load_dotenv(Path(__file__).resolve().parents[1] / '.env')
 import random
 from datetime import datetime, timedelta
 
@@ -13,6 +21,10 @@ from app.services.analysis import evaluate_transcript
 from app.simulator.api import router as simulator_router
 from app.simulator.dialogue import create_dialogue
 from app.simulator.service import SimulatorService
+from app.simulator.live.api import router as live_router
+from app.simulator.live.conversation import create_caller
+from app.simulator.live.service import LiveService
+from app.simulator.live.speech import create_speech
 
 logging.basicConfig(level=os.environ.get('LOG_LEVEL', 'INFO'))
 
@@ -30,6 +42,9 @@ app.add_middleware(
 
 app.state.simulator = SimulatorService(create_dialogue())
 app.include_router(simulator_router)
+# Live AI practice calls: Claude conversation + OpenAI speech, grounded in the FTC robocall corpus.
+app.state.live = LiveService(create_caller(), create_speech())
+app.include_router(live_router)
 
 SESSION_STORE: dict[str, dict[str, str]] = {}
 

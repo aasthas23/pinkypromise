@@ -47,6 +47,8 @@ export interface SimResult {
   cues?: { spotted: string[]; missed: string[] };
   /** The call's saved .txt transcript on the practice server (backend/data/call_transcripts/). */
   transcriptFile?: string;
+  /** How the call was generated and grounded (AI caller, source transcripts). */
+  provenance?: string;
 }
 
 export interface DemoState {
