@@ -22,10 +22,28 @@ function Overview() {
   const { verification, biweeklyOptIn, callHistory, csvRecords } = useDemo();
   const tactics = tacticAnalytics(list);
   const totalCalls = csvRecords?.length || list.length;
-  const startAvg = Math.round(list.reduce((a, c) => a + (c.trend[0] ?? c.vulnerability), 0) / Math.max(1, list.length));
-  const avg = Math.round(list.reduce((a, c) => a + c.vulnerability, 0) / Math.max(1, list.length));
+  const latestByCustomer = new Map<string, (typeof csvRecords)[number]>();
+  const chronological = [...(csvRecords || [])].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
+  for (const record of chronological) {
+    const key = record.userId || record.employeeName.toLowerCase();
+    latestByCustomer.set(key, record);
+  }
+  const latestRecords = Array.from(latestByCustomer.values());
+  const avg = latestRecords.length
+    ? Math.round(latestRecords.reduce((sum, record) => sum + record.vulnerabilityScore, 0) / latestRecords.length)
+    : Math.round(list.reduce((sum, customer) => sum + customer.vulnerability, 0) / Math.max(1, list.length));
+  const firstByCustomer = new Map<string, (typeof csvRecords)[number]>();
+  for (const record of chronological) {
+    const key = record.userId || record.employeeName.toLowerCase();
+    if (!firstByCustomer.has(key)) firstByCustomer.set(key, record);
+  }
+  const startAvg = Array.from(firstByCustomer.values()).length
+    ? Math.round(Array.from(firstByCustomer.values()).reduce((sum, record) => sum + record.vulnerabilityScore, 0) / firstByCustomer.size)
+    : avg;
   const sims = totalCalls;
-  const need = list.filter((c) => c.vulnerability >= 60).length;
+  const need = latestRecords.length
+    ? latestRecords.filter((record) => record.vulnerabilityScore >= 60).length
+    : list.filter((customer) => customer.vulnerability >= 60).length;
   const kpis = [
     { l: "Customers tracked", v: list.length, i: Users, mood: "confident" },
     { l: "Avg. vulnerability", v: avg, i: Gauge, mood: "worried" },

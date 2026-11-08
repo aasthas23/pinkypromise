@@ -36,6 +36,7 @@ function pickVoice(): SpeechSynthesisVoice | null {
   const voices = synth()?.getVoices() ?? [];
   cachedVoice =
     voices.find((v) => v.lang === "en-US" && /natural|enhanced|premium/i.test(v.name)) ??
+    voices.find((v) => v.lang === "en-US" && /samantha|ava|karen|zira|aria|daniel/i.test(v.name)) ??
     voices.find((v) => v.lang === "en-US") ??
     voices.find((v) => v.lang?.startsWith("en")) ??
     null;
@@ -82,8 +83,9 @@ export function speakLine(
       const v = pickVoice();
       if (v) u.voice = v;
       u.lang = v?.lang ?? "en-US";
-      u.pitch = opts.voice?.pitch ?? 1;
-      u.rate = opts.voice?.rate ?? 1;
+      u.pitch = opts.voice?.pitch ?? 1.01;
+      u.rate = opts.voice?.rate ?? 0.92;
+      u.volume = 1;
       u.onend = finish;
       u.onerror = finish;
       s.speak(u);

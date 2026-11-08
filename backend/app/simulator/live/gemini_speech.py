@@ -83,7 +83,7 @@ class GeminiSpeech:
         return text_from(r.json()).strip()
 
     async def synthesize(self, text: str, instructions: str) -> AsyncIterator[bytes]:
-        """One sentence at a time (the service splits replies), returned as a playable WAV."""
+        """Synthesize one complete caller reply, preserving natural pacing within the utterance."""
         body = {
             'contents': [{'role': 'user', 'parts': [{'text': text[:4000]}]}],
             'generationConfig': {

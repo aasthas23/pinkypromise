@@ -8,11 +8,11 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI
+from fastapi.responses import PlainTextResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.schemas import AnalysisResult, SessionCreateRequest, SessionResponse, TranscriptAnalysisRequest
 from app.services.analysis import evaluate_transcript
-from app.services.voice import router as voice_router
 from app.simulator.api import router as simulator_router
 from app.simulator.dialogue import create_dialogue
 from app.simulator.live.api import router as live_router
@@ -41,7 +41,6 @@ app.add_middleware(
 app.state.simulator = SimulatorService(create_dialogue())
 app.state.live = LiveService(create_caller(), create_speech())
 app.include_router(simulator_router)
-app.include_router(voice_router)
 app.include_router(live_router)
 
 SESSION_STORE: dict[str, dict[str, str]] = {}
@@ -86,6 +85,19 @@ async def get_session(user_id: str) -> dict[str, str]:
     if not session:
         return {"error": "No active session"}
     return session
+
+
+@app.get("/analytics/csv")
+async def analytics_csv() -> PlainTextResponse:
+    backend_root = Path(__file__).resolve().parents[1]
+    csv_path = backend_root / "output" / "fake_analysis.csv"
+    if not csv_path.exists():
+        return PlainTextResponse("", media_type="text/csv; charset=utf-8")
+    return PlainTextResponse(
+        csv_path.read_text(encoding="utf-8"),
+        media_type="text/csv; charset=utf-8",
+        headers={"Cache-Control": "no-store"},
+    )
 
 
 @app.post("/transcripts/analyze", response_model=AnalysisResult)

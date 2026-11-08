@@ -8,6 +8,7 @@ import os
 import urllib.error
 import urllib.request
 from datetime import datetime
+from pathlib import Path
 from typing import Any, Dict, List
 
 log = logging.getLogger(__name__)
@@ -28,6 +29,26 @@ CSV_FIELDNAMES = [
     "duration_seconds",
     "outcome",
 ]
+
+
+def append_csv_row(csv_row: Dict[str, Any]) -> None:
+    """Append a canonical analytics row to both generated and frontend CSV datasets."""
+    backend_root = Path(__file__).resolve().parents[2]
+    targets = [
+        backend_root / "output" / "fake_analysis.csv",
+        backend_root.parent / "frontend" / "src" / "data" / "fake_analysis.csv",
+    ]
+    for target in targets:
+        try:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target_exists = target.exists() and target.stat().st_size > 0
+            with target.open("a", newline="", encoding="utf-8") as handle:
+                writer = csv.DictWriter(handle, fieldnames=CSV_FIELDNAMES)
+                if not target_exists:
+                    writer.writeheader()
+                writer.writerow(csv_row)
+        except OSError as exc:
+            log.warning("Could not append simulation CSV row to %s: %s", target, exc)
 
 
 def _normalize(text: str) -> str:
@@ -189,6 +210,7 @@ def evaluate_transcript(
         "duration_seconds": duration_seconds,
         "outcome": detected_outcome,
     }
+    append_csv_row(csv_row)
 
     csv_buffer = io.StringIO()
     writer = csv.DictWriter(csv_buffer, fieldnames=CSV_FIELDNAMES)

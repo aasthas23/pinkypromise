@@ -8,25 +8,42 @@ import type { SimulationRecord } from "./csv-analytics";
 export function useCustomers(): Customer[] {
   const s = useDemo();
   return useMemo(() => {
+    const latestByCustomer = new Map<string, SimulationRecord>();
+    const recordsNewestFirst = [...(s.csvRecords || [])].sort((a, b) =>
+      b.timestamp.localeCompare(a.timestamp)
+    );
+    for (const record of recordsNewestFirst) {
+      const key = record.userId || record.employeeName.toLowerCase();
+      if (!latestByCustomer.has(key)) latestByCustomer.set(key, record);
+    }
     // 1. Map existing mock customers with their live CSV / store updates
     const baseMapped = customers.map((c) => {
-      const csvMatch = s.csvRecords?.find(
-        (r) =>
-          r.employeeName.toLowerCase() === c.name.toLowerCase() ||
-          (c.id === "alex" && r.userId === "fake-user-001") ||
-          (c.id === "maria" && r.userId === "fake-user-002") ||
-          (c.id === "james" && r.userId === "fake-user-003") ||
-          (c.id === "priya" && r.userId === "fake-user-004") ||
-          (c.id === "dorothy" && r.userId === "fake-user-005") ||
-          (c.id === "marcus" && r.userId === "fake-user-006")
-      );
+      const customerId =
+        c.id === "alex" ? "fake-user-001"
+        : c.id === "maria" ? "fake-user-002"
+        : c.id === "james" ? "fake-user-003"
+        : c.id === "priya" ? "fake-user-004"
+        : c.id === "dorothy" ? "fake-user-005"
+        : c.id === "marcus" ? "fake-user-006"
+        : "";
+      const csvMatch = latestByCustomer.get(customerId)
+        ?? latestByCustomer.get(c.name.toLowerCase());
 
       if (c.id !== CURRENT_CUSTOMER_ID) {
+        const allCsvMatches = (s.csvRecords || []).filter((record) =>
+          record.userId === customerId ||
+          record.employeeName.toLowerCase() === c.name.toLowerCase()
+        );
+        const chronologicalTrend = [...allCsvMatches]
+          .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
+          .map((record) => record.vulnerabilityScore);
         return {
           ...c,
           vulnerability: csvMatch ? csvMatch.vulnerabilityScore : c.vulnerability,
+          simulations: allCsvMatches.length || c.simulations,
           summary: csvMatch?.employeeSummary || c.summary,
           lastSimulation: csvMatch?.timestamp ? csvMatch.timestamp.slice(0, 10) : c.lastSimulation,
+          trend: chronologicalTrend.length ? chronologicalTrend.slice(-5) : c.trend,
         };
       }
 

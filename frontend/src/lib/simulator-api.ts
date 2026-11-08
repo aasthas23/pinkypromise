@@ -259,7 +259,12 @@ async function* readEvents(
       while ((sep = buf.indexOf("\n\n")) >= 0) {
         const line = buf.slice(0, sep).trim();
         buf = buf.slice(sep + 2);
-        if (line.startsWith("data: ")) yield JSON.parse(line.slice(6)) as LiveEvent;
+        if (!line.startsWith("data: ")) continue;
+        try {
+          yield JSON.parse(line.slice(6)) as LiveEvent;
+        } catch {
+          throw new SimulatorApiError("The practice server returned an invalid stream response.");
+        }
       }
     }
   } finally {

@@ -166,7 +166,9 @@ def test_full_call_with_memory_streaming_and_saved_transcript(live):
 
     ev = events(http.post(f'/simulator/live/sessions/{sid}/answer'))
     callers = [e for e in ev if e['type'] == 'caller']
-    assert [c['text'] for c in callers] == ['Hello, this is Casey from T-Mobile Support.', 'We noticed unusual activity on your account.']
+    assert [c['text'] for c in callers] == [
+        'Hello, this is Casey from T-Mobile Support. We noticed unusual activity on your account.'
+    ]
     assert ev[-1]['type'] == 'done' and ev[-1]['ended'] is False
     first_caller_id = callers[0]['entryId']
 
@@ -225,7 +227,7 @@ def test_interruption_and_silence_are_passed_to_the_model(live):
     session = app.state.live._get(sid)
     opener = next(e for e in session.entries if e.speaker == 'caller')
     assert opener.interrupted is True
-    assert opener.text == 'This is T-Mobile Support calling.'  # trimmed to what was heard
+    assert opener.text == 'This is T-Mobile Support calling. There’s a problem with your account. I need you to confirm a few things.'
     before = len([e for e in session.entries if e.speaker == 'user'])
     events(http.post(f'/simulator/live/sessions/{sid}/turn', json={'silence': True}))
     assert 'quiet' in fake.stream_calls[-1]['messages'][-1]['content']
@@ -237,10 +239,10 @@ def test_no_speech_and_unsafe_lines(live):
     sid = start(http)['sessionId']
     fake.replies = [['Call us back at 800-555-0199 right now. ', 'This is T-Mobile Security calling about your account.']]
     ev = events(http.post(f'/simulator/live/sessions/{sid}/answer'))
-    assert [e['text'] for e in ev if e['type'] == 'caller'] == ['This is T-Mobile Security calling about your account.']
+    assert [e['text'] for e in ev if e['type'] == 'caller'] == ['Sorry, I have to go. I’ll call you back.']
     speech.transcript = '   '
     ev = events(http.post(f'/simulator/live/sessions/{sid}/turn', content=b'x', headers={'Content-Type': 'audio/webm'}))
-    assert ev == [{'type': 'no_speech'}]
+    assert ev == [{'type': 'error', 'message': 'The call has ended.'}]
 
 
 def test_hang_up_mid_reply_keeps_the_partial_line_and_saves(live):

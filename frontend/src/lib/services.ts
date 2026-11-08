@@ -7,7 +7,7 @@
  * - trainingService → user progress tables (mock)
  * Swap implementations here without touching the UI.
  */
-import { setDemo, type SimResult } from "./store";
+import { addOrUpdateCsvRecord, setDemo, type SimResult } from "./store";
 import type { SimulationRecord } from "./csv-analytics";
 import { CURRENT_CUSTOMER_ID, customers, scenarios, type Difficulty } from "./mock-data";
 import { debriefToSimResult } from "./sim-result";
@@ -31,15 +31,22 @@ async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
     throw new Error(message || `Request failed for ${path}`);
   }
 
+  const contentType = typeof response.headers?.get === "function"
+    ? response.headers.get("content-type") || ""
+    : "";
+  if (!contentType && path.includes("/transcript.txt")) {
+    return (await response.text()) as T;
+  }
+  if (contentType.includes("application/json")) {
+    return (await response.json()) as T;
+  }
+  if (typeof response.text === "function" && (!response.json || contentType.includes("text/"))) {
+    return (await response.text()) as T;
+  }
   if (typeof response.json === "function") {
     return (await response.json()) as T;
   }
-
-  if (typeof response.text === "function") {
-    return (await response.text()) as T;
-  }
-
-  return ({} as T);
+  return (await response.text()) as T;
 }
 
 export const backendSimulatorService = {
@@ -131,9 +138,32 @@ const lastAiCall: Partial<Record<Difficulty, string>> = {};
 
 function recordResult(result: SimResult) {
   setDemo((s) => ({
-    ...s, lastResult: result, callHistory: [...s.callHistory, result], simulations: s.simulations + 1,
-    vulnerability: Math.round((s.vulnerability + result.score) / 2),
+    ...s, lastResult: result, callHistory: [...s.callHistory, result],
   }));
+  const outcome = result.score >= 60 ? "compromised" : "resisted";
+  const redFlags = result.tactics.length
+    ? result.tactics.map((tactic) => tactic.toLowerCase().replace(/[^a-z0-9]+/g, "_"))
+    : ["urgency", "authority"];
+  addOrUpdateCsvRecord({
+    userId: "fake-user-001",
+    timestamp: new Date(result.completedAt).toISOString(),
+    scamType: result.difficulty === "beginner"
+      ? "rewards_scam"
+      : result.difficulty === "advanced"
+        ? "account_security"
+        : "tmobile_phishing",
+    redFlags,
+    vulnerabilityScore: result.score,
+    employeeSummary: result.outcomeSummary
+      ?? (outcome === "resisted"
+        ? "Alex recognized the simulated scam and used protective verification habits."
+        : "Alex showed elevated susceptibility during the simulated scam and needs more practice."),
+    employeeName: "Alex Rivera",
+    department: "Customer Support",
+    scenario: result.outcomeTitle ?? `${result.difficulty} Gemini practice call`,
+    durationSeconds: result.transcript?.length ? Math.max(30, result.transcript.length * 12) : 180,
+    outcome,
+  });
 }
 
 export const simulationService = {
@@ -168,6 +198,51 @@ export const simulationService = {
     if (session.transcriptFile) result.transcriptFile = session.transcriptFile;
     if (debrief.provenance) result.provenance = debrief.provenance;
     recordResult(result);
+    const transcript = session.entries
+      .map((entry) => `${entry.speaker === "caller" ? session.title : entry.speaker === "user" ? "User" : "System"}: ${entry.text}`)
+      .join("\n");
+    await fetch(`${API_BASE_URL}/transcripts/analyze`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          user_id: "fake-user-001",
+          transcript,
+          scam_type: difficulty === "beginner" ? "rewards_scam" : difficulty === "advanced" ? "account_security" : "tmobile_phishing",
+          employee_name: "Alex Rivera",
+          department: "Customer Support",
+          scenario: session.title,
+          duration_seconds: Math.max(30, Math.round(debrief.duration_ms ? debrief.duration_ms / 1000 : session.entries.length * 12)),
+        }),
+      }).then(async (response) => {
+        if (!response.ok) return;
+        const analysis = await response.json() as {
+          timestamp?: string;
+          scam_type: string;
+          red_flags: string[];
+          vulnerability_score: number;
+          employee_summary: string;
+          outcome: "compromised" | "resisted";
+          employee_name?: string;
+          department?: string;
+          scenario?: string;
+          duration_seconds?: number;
+        };
+        addOrUpdateCsvRecord({
+          userId: "fake-user-001",
+          timestamp: analysis.timestamp ?? new Date().toISOString(),
+          scamType: analysis.scam_type,
+          redFlags: analysis.red_flags,
+          vulnerabilityScore: analysis.vulnerability_score,
+          employeeSummary: analysis.employee_summary,
+          employeeName: analysis.employee_name ?? "Alex Rivera",
+          department: analysis.department ?? "Customer Support",
+          scenario: analysis.scenario ?? session.title,
+          durationSeconds: analysis.duration_seconds ?? Math.max(30, Math.round(debrief.duration_ms ? debrief.duration_ms / 1000 : session.entries.length * 12)),
+          outcome: analysis.outcome,
+        });
+      }).catch(() => {
+        // Browser store and visible analytics still update if CSV persistence is unavailable.
+      });
     return result;
   },
 
@@ -186,47 +261,25 @@ export const simulationService = {
     };
 
     setDemo((s) => {
-      const nextSims = s.simulations + 1;
-      const nextVuln = Math.round((s.vulnerability + result.score) / 2);
-      const scamType = difficulty === "beginner" ? "rewards_scam" : difficulty === "intermediate" ? "tmobile_phishing" : "account_security";
-      const flags = tactics.map((t) => t.toLowerCase().replace(/[^a-z0-9]+/g, "_"));
-      const isResisted = result.score < 60;
-
-      const newRecord: SimulationRecord = {
-        userId: "fake-user-001",
-        timestamp: new Date().toISOString(),
-        scamType,
-        redFlags: flags.length > 0 ? flags : ["urgency", "authority"],
-        vulnerabilityScore: nextVuln,
-        employeeSummary: isResisted
-          ? "Alex recognized scam patterns during the simulation and refused to share sensitive verification details."
-          : "Alex showed elevated susceptibility to urgency pressure and hesitated before verifying official channels.",
-        employeeName: "Alex Rivera",
-        department: "Customer Support",
-        scenario: sc.title,
-        durationSeconds: 160,
-        outcome: isResisted ? "resisted" : "compromised",
-      };
-
-      const existingIndex = (s.csvRecords || []).findIndex(
-        (r) => r.userId === "fake-user-001" || r.employeeName === "Alex Rivera",
-      );
-      let updatedCsv: SimulationRecord[];
-      if (existingIndex >= 0) {
-        updatedCsv = [...s.csvRecords];
-        updatedCsv[existingIndex] = newRecord;
-      } else {
-        updatedCsv = [newRecord, ...(s.csvRecords || [])];
-      }
-
       return {
         ...s,
         lastResult: result,
         callHistory: [...s.callHistory, result],
-        simulations: nextSims,
-        vulnerability: nextVuln,
-        csvRecords: updatedCsv,
       };
+    });
+    const scamType = difficulty === "beginner" ? "rewards_scam" : difficulty === "intermediate" ? "tmobile_phishing" : "account_security";
+    addOrUpdateCsvRecord({
+      userId: "fake-user-001",
+      timestamp: new Date(result.completedAt).toISOString(),
+      scamType,
+      redFlags: tactics.map((t) => t.toLowerCase().replace(/[^a-z0-9]+/g, "_")).filter(Boolean),
+      vulnerabilityScore: result.score,
+      employeeSummary: result.wentWell.join(". "),
+      employeeName: "Alex Rivera",
+      department: "Customer Support",
+      scenario: sc.title,
+      durationSeconds: 160,
+      outcome: result.score >= 60 ? "compromised" : "resisted",
     });
 
     return result;

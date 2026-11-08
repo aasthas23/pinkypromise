@@ -68,6 +68,7 @@ export interface DemoState {
 
 const KEY = "safesignal-demo-v1";
 const FINGERPRINT_KEY = "safesignal-csv-fingerprint-v1";
+const LAST_RESULT_KEY = "safesignal-last-result-v1";
 const CSV_FINGERPRINT = `${csvRaw.length}:${csvRaw.slice(0, 30)}:${csvRaw.slice(-30)}`;
 
 export const initialCsvRecords: SimulationRecord[] = parseCsv(csvRaw);
@@ -89,12 +90,23 @@ export const initialState: DemoState = {
 };
 
 let state: DemoState = initialState;
+if (typeof window !== "undefined") {
+  try {
+    const backedUp = sessionStorage.getItem(LAST_RESULT_KEY);
+    if (backedUp) state = { ...initialState, lastResult: JSON.parse(backedUp) as SimResult };
+  } catch {
+    // Ignore malformed session backup; localStorage and in-memory state remain authoritative.
+  }
+}
 const listeners = new Set<() => void>();
 const emit = () => listeners.forEach((l) => l());
 
 export function setDemo(updater: (s: DemoState) => DemoState) {
   state = updater(state);
-  if (typeof window !== "undefined") localStorage.setItem(KEY, JSON.stringify(state));
+  if (typeof window !== "undefined") {
+    localStorage.setItem(KEY, JSON.stringify(state));
+    if (state.lastResult) sessionStorage.setItem(LAST_RESULT_KEY, JSON.stringify(state.lastResult));
+  }
   emit();
 }
 
@@ -103,21 +115,13 @@ export function resetDemo() {
     ...initialState,
     csvRecords: parseCsv(csvRaw),
   }));
+  if (typeof window !== "undefined") sessionStorage.removeItem(LAST_RESULT_KEY);
 }
 
 export function addOrUpdateCsvRecord(record: SimulationRecord) {
   setDemo((s) => {
     const isAlex = record.userId === "fake-user-001" || record.employeeName === "Alex Rivera";
-    const existingIndex = s.csvRecords.findIndex(
-      (r) => r.userId === record.userId || (isAlex && r.employeeName === "Alex Rivera")
-    );
-    let newRecords: SimulationRecord[];
-    if (existingIndex >= 0) {
-      newRecords = [...s.csvRecords];
-      newRecords[existingIndex] = record;
-    } else {
-      newRecords = [record, ...s.csvRecords];
-    }
+    const newRecords = [record, ...s.csvRecords];
     return {
       ...s,
       csvRecords: newRecords,
@@ -129,13 +133,44 @@ export function addOrUpdateCsvRecord(record: SimulationRecord) {
 
 export function updateCsvRecords(records: SimulationRecord[]) {
   setDemo((s) => {
-    const alex = records.find((r) => r.userId === "fake-user-001" || r.employeeName === "Alex Rivera");
+    const alexRecords = records
+      .filter((r) => r.userId === "fake-user-001" || r.employeeName === "Alex Rivera")
+      .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+    const alex = alexRecords[0];
     return {
       ...s,
       csvRecords: records,
       vulnerability: alex ? alex.vulnerabilityScore : s.vulnerability,
+      simulations: alex
+        ? records.filter((r) => r.userId === "fake-user-001" || r.employeeName === "Alex Rivera").length
+        : s.simulations,
     };
   });
+}
+
+/** Poll the canonical backend CSV and publish new rows into every customer/employee view. */
+let csvSyncInFlight: Promise<void> | null = null;
+export async function syncCsvFromBackend(): Promise<void> {
+  if (typeof window === "undefined" || csvSyncInFlight) return csvSyncInFlight ?? Promise.resolve();
+  csvSyncInFlight = (async () => {
+    try {
+      const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined) || "http://localhost:8000";
+      const response = await fetch(`${apiBase}/analytics/csv`, { cache: "no-store" });
+      if (!response.ok) return;
+      const raw = await response.text();
+      const records = parseCsv(raw);
+      if (!records.length) return;
+      const current = state.csvRecords;
+      const changed =
+        records.length !== current.length ||
+        records.some((record, index) => JSON.stringify(record) !== JSON.stringify(current[index]));
+      if (changed) updateCsvRecords(records);
+    } catch {
+      // Keep the browser snapshot available when the backend is offline.
+    }
+  })();
+  await csvSyncInFlight;
+  csvSyncInFlight = null;
 }
 
 export function exportCsvString(): string {
@@ -150,19 +185,27 @@ export function hydrateDemo() {
     const raw = localStorage.getItem(KEY);
     const storedFp = localStorage.getItem(FINGERPRINT_KEY);
     const csvChanged = storedFp !== CSV_FINGERPRINT;
+    let backedUpResult: SimResult | null = null;
+    try {
+      const backup = sessionStorage.getItem(LAST_RESULT_KEY);
+      if (backup) backedUpResult = JSON.parse(backup) as SimResult;
+    } catch {
+      backedUpResult = null;
+    }
 
     if (raw && !csvChanged) {
       const parsed = JSON.parse(raw);
       const csvRecs: SimulationRecord[] =
         parsed.csvRecords && parsed.csvRecords.length > 0 ? parsed.csvRecords : initialCsvRecords;
-      const alex = csvRecs.find(
-        (r) => r.userId === "fake-user-001" || r.employeeName === "Alex Rivera"
-      );
+      const alex = csvRecs
+        .filter((r) => r.userId === "fake-user-001" || r.employeeName === "Alex Rivera")
+        .sort((a, b) => b.timestamp.localeCompare(a.timestamp))[0];
       state = {
         ...initialState,
         ...parsed,
         csvRecords: csvRecs,
         vulnerability: alex ? alex.vulnerabilityScore : (parsed.vulnerability ?? initialState.vulnerability),
+        lastResult: parsed.lastResult ?? backedUpResult,
       };
     } else {
       localStorage.setItem(FINGERPRINT_KEY, CSV_FINGERPRINT);
@@ -170,6 +213,7 @@ export function hydrateDemo() {
         ...initialState,
         csvRecords: initialCsvRecords,
         vulnerability: alexInitialRecord ? alexInitialRecord.vulnerabilityScore : 46,
+        lastResult: backedUpResult,
       };
       localStorage.setItem(KEY, JSON.stringify(state));
     }

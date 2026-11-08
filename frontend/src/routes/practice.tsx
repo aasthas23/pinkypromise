@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Mascot, MascotBubble } from "@/components/safe/Mascot";
 import { PageTitle } from "@/components/safe/AppShell";
 import { scenarios, type Difficulty } from "@/lib/mock-data";
-import { backendSimulatorService, simulationService } from "@/lib/services";
+import { simulationService } from "@/lib/services";
 import { cn } from "@/lib/utils";
 import { Switch } from "@/components/ui/switch";
 import { useDemo } from "@/lib/store";
@@ -60,35 +60,6 @@ function Practice() {
   const [source, setSource] = useState<"practice" | "biweekly">("practice");
   const [pick, setPick] = useState<Difficulty>("intermediate");
   const [inCall, setInCall] = useState(false);
-  const [liveCallState, setLiveCallState] = useState<{
-    loading: boolean;
-    sessionId: string | null;
-    transcriptEntries: Array<{ speaker: string; text: string }>;
-    transcriptText: string;
-    error: string | null;
-  }>({ loading: false, sessionId: null, transcriptEntries: [], transcriptText: "", error: null });
-
-  const handleLiveCall = async () => {
-    setLiveCallState({ loading: true, sessionId: null, transcriptEntries: [], transcriptText: "", error: null });
-    try {
-      const result = await backendSimulatorService.runTestCall("account-security-sim-swap");
-      setLiveCallState({
-        loading: false,
-        sessionId: result.sessionId,
-        transcriptEntries: result.transcriptEntries,
-        transcriptText: result.transcriptText,
-        error: null,
-      });
-    } catch (error) {
-      setLiveCallState({
-        loading: false,
-        sessionId: null,
-        transcriptEntries: [],
-        transcriptText: "",
-        error: error instanceof Error ? error.message : "Unable to start the live test call right now.",
-      });
-    }
-  };
 
   return (
     <div>
@@ -122,60 +93,6 @@ function Practice() {
           >
             Preview
           </Button>
-        )}
-      </section>
-
-      <section className="mt-5 rounded-3xl border border-pink/50 bg-card/95 p-3 shadow-soft">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-[0.18em] text-primary-deep">Live test</p>
-            <h2 className="mt-1 text-lg font-black">Quick call</h2>
-          </div>
-          <Button variant="hero" size="sm" onClick={handleLiveCall} disabled={liveCallState.loading}>
-            {liveCallState.loading ? "Calling…" : "Get call"}
-          </Button>
-        </div>
-
-        {liveCallState.error && (
-          <p className="mt-3 rounded-2xl border border-red-500/50 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {liveCallState.error}
-          </p>
-        )}
-
-        {liveCallState.transcriptEntries.length > 0 && (
-          <div className="mt-4 rounded-2xl border border-border bg-muted/50 p-3">
-            <div className="mb-2 flex items-center justify-between">
-              <p className="text-sm font-black text-primary-deep">Transcript</p>
-              {liveCallState.sessionId && (
-                <span className="text-[10px] uppercase tracking-[0.12em] text-muted-foreground">
-                  {liveCallState.sessionId}
-                </span>
-              )}
-            </div>
-            <div className="max-h-52 space-y-2 overflow-y-auto pr-1">
-              {liveCallState.transcriptEntries.map((entry, index) => (
-                <p
-                  key={`${entry.speaker}-${index}`}
-                  className={cn(
-                    "max-w-[85%] rounded-2xl px-3 py-2 text-sm",
-                    entry.speaker === "caller"
-                      ? "bg-card text-foreground"
-                      : "ml-auto bg-primary text-primary-foreground",
-                  )}
-                >
-                  <span className="font-black uppercase tracking-[0.08em]">
-                    {entry.speaker === "caller" ? "Caller" : entry.speaker === "user" ? "You" : entry.speaker}:
-                  </span>{" "}
-                  {entry.text}
-                </p>
-              ))}
-            </div>
-            {liveCallState.transcriptText && (
-              <pre className="mt-4 max-h-40 overflow-y-auto whitespace-pre-wrap rounded-2xl bg-ink p-3 text-xs text-ink-foreground">
-                {liveCallState.transcriptText}
-              </pre>
-            )}
-          </div>
         )}
       </section>
 
@@ -307,7 +224,7 @@ function CallScreen({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center gap-4 bg-ink bg-call-glow text-ink-foreground"
+      className="fixed left-1/2 top-1/2 z-50 flex h-[calc(100vh-1.5rem)] w-[calc(100%-1.5rem)] max-w-[390px] -translate-x-1/2 -translate-y-1/2 flex-col items-center justify-center gap-4 overflow-hidden rounded-[2.4rem] border border-[#f2d9eb] bg-ink bg-call-glow text-ink-foreground shadow-[0_18px_50px_rgba(70,24,52,0.12)]"
     >
       <Mascot mood="think" size={110} />
       <p role="status" className="font-bold">
@@ -319,7 +236,6 @@ function CallScreen({
 
 type Line = { id: string; speaker: "caller" | "user" | "system"; text: string };
 type Phase = "ringing" | "thinking" | "caller" | "listening" | "hearing" | "sending" | "ended";
-const SILENCE_PROMPT_MS = 9000;
 const CHAT_PACE_MS = (text: string) => Math.min(1200, 250 + text.length * 8);
 
 const STATUS: Record<Phase, string> = {
@@ -372,8 +288,6 @@ function AiCall({
   const ending = useRef(false);
   const voiceRef = useRef(mode === "voice");
   const shownCaller = useRef<string | undefined>(undefined);
-  const silenceTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const promptedSilence = useRef(false);
 
   const callOver = phase === "ended";
   const active = !callOver && phase !== "ringing";
@@ -387,15 +301,7 @@ function AiCall({
     txRef.current?.scrollTo({ top: 99999, behavior: "smooth" });
   }, [lines.length, phase]);
 
-  const clearSilence = () => {
-    if (silenceTimer.current) {
-      clearTimeout(silenceTimer.current);
-      silenceTimer.current = undefined;
-    }
-  };
-
   const endLocally = () => {
-    clearSilence();
     abort.current?.abort();
     player.current?.stop();
     listener.current?.stop();
@@ -407,13 +313,6 @@ function AiCall({
     if (ending.current) return endLocally();
     setPhase("listening");
     if (listener.current) listener.current.paused = false;
-    clearSilence();
-    if (!promptedSilence.current && listener.current && !listener.current.muted) {
-      silenceTimer.current = setTimeout(() => {
-        promptedSilence.current = true;
-        void send({ silence: true });
-      }, SILENCE_PROMPT_MS);
-    }
   };
 
   const showCaller = (entryId: string, text: string) => {
@@ -424,6 +323,9 @@ function AiCall({
       const next = ls.slice();
       const existing = next[i];
       if (!existing) return next;
+      if (existing.text === text || existing.text.includes(text)) {
+        return next;
+      }
       next[i] = { ...existing, text: `${existing.text} ${text}` };
       return next;
     });
@@ -481,7 +383,6 @@ function AiCall({
     interrupted = false,
   ) => {
     if (ending.current) return;
-    clearSilence();
     setError(undefined);
     if (listener.current) listener.current.paused = true;
     setPhase("audio" in reply ? "sending" : "thinking");
@@ -512,7 +413,6 @@ function AiCall({
     let interruptedNext = false;
     const l = new MicListener({
       onSpeechStart: () => {
-        clearSilence();
         if (player.current?.busy || streaming.current) {
           interruptedNext = true;
           player.current?.stop();
@@ -583,7 +483,6 @@ function AiCall({
 
   useEffect(
     () => () => {
-      clearTimeout(silenceTimer.current);
       abort.current?.abort();
       player.current?.stop();
       listener.current?.stop();
@@ -654,7 +553,7 @@ function AiCall({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex flex-col bg-ink bg-call-glow text-ink-foreground"
+      className="fixed left-1/2 top-1/2 z-50 flex h-[calc(100vh-1.5rem)] w-[calc(100%-1.5rem)] max-w-[390px] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-[2.4rem] border border-[#f2d9eb] bg-ink bg-call-glow text-ink-foreground shadow-[0_18px_50px_rgba(70,24,52,0.12)]"
     >
       {finishing ? (
         <div className="m-auto flex flex-col items-center gap-4 text-center">
@@ -899,7 +798,7 @@ function ScriptedCall({
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex flex-col bg-ink bg-call-glow text-ink-foreground"
+      className="fixed left-1/2 top-1/2 z-50 flex h-[calc(100vh-1.5rem)] w-[calc(100%-1.5rem)] max-w-[390px] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-[2.4rem] border border-[#f2d9eb] bg-ink bg-call-glow text-ink-foreground shadow-[0_18px_50px_rgba(70,24,52,0.12)]"
     >
       {ending ? (
         <div className="m-auto flex flex-col items-center gap-4 text-center">

@@ -1,8 +1,8 @@
 """Lifecycle of live AI practice calls.
 
 start -> (ringing) -> answer: the AI caller opens -> turns: the user speaks or types,
-the reply streams back sentence by sentence (each sentence is spoken via TTS as soon
-as it's complete) -> the user hangs up or the caller ends the call -> the transcript
+the reply is delivered as one complete utterance so TTS remains natural -> the user
+hangs up or the caller ends the call -> the transcript
 is saved to backend/data/call_transcripts/ and the debrief is built.
 
 Sessions live in memory (30 min TTL). Audio is never stored. Hang-up never waits for
@@ -41,22 +41,29 @@ CUT_OFF = '[You were cut off mid-sentence: they started talking over you.]'
 WRAP_UP = '[It’s time to wrap the call up in your next reply.]'
 # A spoken sentence: end punctuation (plus closing quotes) followed by a space. The first
 # few characters are skipped so very short fragments ("Okay.") join the next sentence.
-_SENTENCE_END = re.compile(r'[.!?…]+["”’)\]]*\s')
-_MIN_SENTENCE = 12
+def pop_sentences(text: str) -> tuple[list[str], str]:
+    """Compatibility helper for callers/tests that need complete early-speech chunks."""
+    if not text:
+        return [], ''
+    matches = list(re.finditer(r'[.!?](?:[\"\'\u201c\u201d])?(?=\s+|$)', text))
+    complete: list[str] = []
+    last_end = 0
+    for match in matches:
+        end = match.end()
+        candidate = text[last_end:end].strip()
+        if candidate and len(candidate) > 8:
+            complete.append(candidate)
+            last_end = end
+        else:
+            break
+    if not complete:
+        return [], text.strip()
+    rest = text[last_end:].strip()
+    return complete, rest
 
 
 def _now() -> int:
     return int(time.time() * 1000)
-
-
-def pop_sentences(buf: str) -> tuple[list[str], str]:
-    out: list[str] = []
-    while True:
-        m = _SENTENCE_END.search(buf, _MIN_SENTENCE)
-        if not m:
-            return out, buf
-        out.append(buf[: m.end()].strip())
-        buf = buf[m.end():]
 
 
 class LiveService:
@@ -267,10 +274,6 @@ class LiveService:
                     if s.status != 'active':
                         break  # hung up mid-reply
                     buf += delta
-                    sentences, buf = pop_sentences(buf)
-                    for sentence in sentences:
-                        if (ev := emit(sentence)):
-                            yield ev
                 if s.status == 'active' and buf.strip() and (ev := emit(buf)):
                     yield ev
                 completed = s.status == 'active'
@@ -346,10 +349,6 @@ class LiveService:
         s = self._get(sid)
         if s.status != 'ended':
             raise InvalidAction('the call has not ended yet')
-        if (task := self._saving.get(sid)):
-            await asyncio.wait([task], timeout=25)
-        else:
-            await self._settled(s)
         return build_live_debrief(self._scenario(s), s), self.view(s)
 
     async def transcript(self, sid: str) -> tuple[str, str]:

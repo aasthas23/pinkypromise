@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowRight, Heart, PhoneCall, ShieldCheck, TrendingUp } from "lucide-react";
+import { ArrowRight, Heart, PhoneCall, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Mascot } from "@/components/safe/Mascot";
 import { useDemo } from "@/lib/store";
@@ -21,28 +21,20 @@ function Home() {
         <Mascot mood="happy" size={150} className="shrink-0 max-sm:max-w-28" />
       </div>
     </div>
-    <Button asChild variant="hero" size="lg" className="mt-5 w-full"><Link to="/verify">Verify a caller<ArrowRight /></Link></Button>
-  </section>
-
-  <section className="space-y-3">
-    <div className="mb-2 flex items-center justify-between gap-2">
-      <h2 className="text-lg font-bold">Your safety at a glance</h2>
-      <Button asChild variant="soft" size="icon" aria-label="View progress"><Link to="/progress"><ArrowRight /></Link></Button>
-    </div>
-    <div className="grid grid-cols-2 gap-3">
-      <div className="rounded-2xl border border-mint-foreground/15 bg-mint/85 p-4 shadow-soft">
-        <span className="mb-4 grid size-9 place-items-center rounded-full bg-card/70 text-mint-foreground"><ShieldCheck className="size-4" /></span>
-        <p className="text-3xl font-black text-mint-foreground">{100-s.vulnerability}<span className="text-base">%</span></p>
-        <p className="mt-2 text-sm font-bold text-mint-foreground">Scam awareness</p>
-        <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-card/70"><div className="h-full rounded-full bg-mint-foreground" style={{width: `${100-s.vulnerability}%`}} /></div>
-      </div>
-      <div className="rounded-2xl border border-peach-foreground/15 bg-peach/85 p-4 shadow-soft">
-        <span className="mb-4 grid size-9 place-items-center rounded-full bg-card/70 text-peach-foreground"><PhoneCall className="size-4" /></span>
-        <p className="text-3xl font-black text-peach-foreground">{s.simulations}</p>
-        <p className="mt-2 text-sm font-bold text-peach-foreground">Calls practiced</p>
-        <p className="mt-4 text-[11px] font-bold text-peach-foreground">One call braver ♥</p>
-      </div>
-    </div>
+    <Button
+      asChild
+      variant="hero"
+      size="xl"
+      className="mt-5 w-full justify-between px-5 text-lg shadow-[0_8px_24px_rgba(236,72,153,0.28)] ring-2 ring-primary/20 ring-offset-2 ring-offset-pink/65"
+    >
+      <Link to="/verify">
+        <span className="flex items-center gap-2">
+          <PhoneCall className="size-5" />
+          Verify a caller
+        </span>
+        <ArrowRight className="size-5" />
+      </Link>
+    </Button>
   </section>
 
   <section className="rounded-[26px] border border-mint-foreground/10 bg-mint/35 p-4">

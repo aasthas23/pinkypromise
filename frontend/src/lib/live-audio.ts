@@ -113,7 +113,16 @@ export class VoicePlayer {
     el.onended = done;
     el.onerror = () => viaBrowser(true); // server voice failed: browser voice instead
     el.src = item.url;
-    el.play().catch(() => viaBrowser(true));
+    void el.play().catch(() => {
+      // Autoplay may reject once even though the sentence is still unlockable.
+      // Do not start a second browser voice while server audio could play.
+      el.onerror = done;
+      el.src = item.url;
+      void el.play().catch(() => {
+        el.onerror = null;
+        viaBrowser(true);
+      });
+    });
   }
 
   /** Stops speaking now (hang-up or barge-in) and drops anything queued. */
