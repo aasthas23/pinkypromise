@@ -1,0 +1,6 @@
+Caller: This is T-Mobile security. Your account has been suspended due to suspicious activity.
+We need you to act right now or your phone number will be blocked.
+Please confirm your SSN and the 6-digit code we just sent you so we can secure your account.
+Customer: I am not sure.
+Caller: Do not tell anyone else. Keep this private and secure your account immediately.
+Customer: I think I should verify through the official app.

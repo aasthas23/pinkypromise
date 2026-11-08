@@ -1,0 +1,26 @@
+Pink Promise AI Fraud Analysis Summary
+====================================
+User ID: fake-user-001
+Scam type: tmobile_phishing
+Vulnerability score: 100/100
+
+Detected red flags:
+- urgency
+- authority
+- fear
+- pii_request
+
+Employee summary:
+The user stayed on the call longer than ideal and showed exposure to urgency and pressure-based persuasion. The response pattern suggests the need for a stronger pause-and-verify habit before sharing any code or account detail.
+
+Actionable tasks:
+1. Pause before sharing any code - Do not disclose one-time codes, passwords, or account numbers during a call that creates urgency.
+2. Verify through a trusted channel - If someone claims to be from a company, call the official number on the account or website instead of using the contact they provide.
+3. Use the buddy rule - If a caller pressures you to act fast or keep things secret, hang up and ask a trusted family member or coworker to review the situation.
+
+Risk chart:
+Urgency      ███████████████████ 95
+Authority    ███████████████████ 97
+Fear         ████████████████████ 100
+Isolation    ██████████████████ 90
+PII request  ████████████████████ 100
