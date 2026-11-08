@@ -1,6 +1,6 @@
 # Pinky Promise — product demo storyboard
 
-1920×1080 · 30 fps · 85.5 s (2565 frames; scenes cross-dissolve over 15 frames). Every beat is grounded in a file in the
+1920×1080 · 30 fps · 89.5 s (2685 frames; scenes cross-dissolve over 15 frames). Every beat is grounded in a file in the
 app; the app itself is read-only. Screens marked **[shot]** are real screenshots
 of the running app (`npm run capture`); screens marked **[rebuilt]** are
 re-created in Remotion from the app's own markup and Tailwind classes so they
@@ -20,7 +20,7 @@ can animate, using the same design tokens (`frontend/src/styles.css`).
 | Transcript saved automatically | Working | `live/transcript.py` |
 | Caller codes (employee issues a 4-digit code, customer checks it) | **Demo only**: "No text messages or notifications are sent" | `routes/verify.tsx`, `routes/employee.verify.tsx` |
 | Progress roadmap | Working (demo data store) | `routes/progress.tsx` |
-| Analysts board | **Illustrative data** | `routes/employee.index.tsx` |
+| Employee Analytics dashboard: Penny's Intelligence Brief, tactic effectiveness, department heatmap, fleet trend, coaching priorities, rankings, simulation explorer, CSV export | Working, on **illustrative data** (fictional employees, synced from `fake_analysis.csv`) | `routes/employee.index.tsx`, `components/safe/EmployerDashboard.tsx` |
 | Biweekly practice reminders | **Demo only**: "no real calls" | `routes/practice.tsx` |
 
 The call shown in scenes 7–8 uses caller lines **verbatim** (one line drops its opening "You're welcome.", because the reply it answered is skipped) from a real saved AI
@@ -42,8 +42,8 @@ added to show the feature; the score is computed with the app's real rubric
 | 7 | 37–58 s | **The live call** | AiCall screen [rebuilt], transcript bubbles appear in sync with the real AI call; user replies type into the input; 🚩 taps pulse with "Red flag noted" status. Side panel: animated labels for what's happening under the hood. | "Written live by AI" · "Grounded in 568 real FTC robocall transcripts" · "Tap 🚩 when something feels off" |
 | 8 | 58–62 s | **Call over** | "This was a fake call." screen [rebuilt] with Penny happy. | — |
 | 9 | 62–71 s | **Debrief** | Results [rebuilt]: score ring animates to 6 "Low risk", What You Practiced rows, Red flags you spotted · 3 of 7 chips. | "Feedback you can trust." · scored by fixed safety rules, not the AI's opinion |
-| 10 | 71–77 s | **Progress & insight** | Two phones: Progress roadmap [shot] and Analysts board [shot]. | "Confidence you can see." + "Analysts board shown with illustrative data" |
-| 11 | 77–84 s | **Close** | Logo + Penny, three trust pillars, end card. | "Practice the call before the real one comes." · "Simulated calls. No real data. Your codes stay yours." |
+| 10 | 71–81 s | **Progress & team insight** | Progress roadmap [shot] beside the Employee Analytics dashboard [shot, full-page capture]; the dashboard scrolls through six real sections while a list beside it highlights the current one. | "Confidence you can see." + "Employee Analytics shown with illustrative demo data" |
+| 11 | 81–89.5 s | **Close** | Logo + Penny, three trust pillars, end card. | "Practice the call before the real one comes." · "Simulated calls. No real data. Your codes stay yours." |
 
 ## Motion language
 

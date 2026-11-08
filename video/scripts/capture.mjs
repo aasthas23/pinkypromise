@@ -1,7 +1,7 @@
 // Screenshots the real running app for the video (read-only: nothing in ../frontend changes).
 // Starts the app's own Vite dev server, drives it with headless Chrome, saves PNGs to public/shots.
 import { spawn } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import puppeteer from "puppeteer-core";
@@ -84,7 +84,27 @@ try {
   await shot("progress");
 
   await go("/employee");
+  await sleep(1500); // charts settle
   await shot("analysts");
+
+  // The analytics dashboard scrolls, so also capture it whole: grow the window until the
+  // app's scrolling <main> fits, then record where each section heading sits.
+  const m = await page.evaluate(() => {
+    const main = document.querySelector("main");
+    const r = (sel) => document.querySelector(sel).getBoundingClientRect().height;
+    return { extra: main.scrollHeight - main.clientHeight, headerH: r("header"), navH: r("nav[aria-label='Main mobile']") };
+  });
+  await page.setViewport({ width: 414, height: 860 + m.extra, deviceScaleFactor: 2 });
+  await sleep(2000);
+  const sections = await page.evaluate(() => {
+    const top = [...document.querySelectorAll("div")].find((d) => d.className.includes("max-w-[390px]")).getBoundingClientRect().top;
+    return [...document.querySelectorAll("main h1, main h2")].map((h) => ({ title: h.textContent.trim(), y: Math.round(h.getBoundingClientRect().top - top) }));
+  });
+  const box = await frame();
+  await page.screenshot({ path: join(out, "analytics-full.png"), clip: box });
+  writeFileSync(join(out, "analytics-full.json"), JSON.stringify({ width: box.width, height: box.height, headerH: m.headerH, navH: m.navH, sections }, null, 2));
+  console.log("captured analytics-full", Math.round(box.height), "px,", sections.length, "sections");
+  await page.setViewport({ width: 414, height: 860, deviceScaleFactor: 3 });
 
   // Caller codes: the employee picks the customer and issues a code (demo delivery only)...
   await go("/employee/verify");

@@ -1,0 +1,56 @@
+{
+  "width": 390,
+  "height": 7951,
+  "headerH": 65,
+  "navH": 68,
+  "sections": [
+    {
+      "title": "Employee Analytics",
+      "y": 82
+    },
+    {
+      "title": "Penny's Intelligence Brief",
+      "y": 377
+    },
+    {
+      "title": "Scam tactic effectiveness",
+      "y": 2050
+    },
+    {
+      "title": "Conversation duration vs. score",
+      "y": 2463
+    },
+    {
+      "title": "Department exposure heatmap",
+      "y": 2869
+    },
+    {
+      "title": "Vulnerability by Tactic",
+      "y": 3327
+    },
+    {
+      "title": "Vulnerability by Scenario",
+      "y": 3764
+    },
+    {
+      "title": "Fleet vulnerability trend",
+      "y": 4181
+    },
+    {
+      "title": "Coaching priorities",
+      "y": 4646
+    },
+    {
+      "title": "Employee performance ranking",
+      "y": 4990
+    },
+    {
+      "title": "Department comparison",
+      "y": 5863
+    },
+    {
+      "title": "Simulation Explorer",
+      "y": 6173
+    }
+  ]
+}

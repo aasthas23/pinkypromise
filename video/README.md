@@ -1,6 +1,6 @@
 # Pinky Promise — product demo video (Remotion)
 
-An 85-second, 1920×1080, 30 fps demo of the app, built with [Remotion](https://remotion.dev).
+An 89.5-second, 1920×1080, 30 fps demo of the app, built with [Remotion](https://remotion.dev).
 Scene-by-scene plan and the feature audit it is grounded in: [STORYBOARD.md](STORYBOARD.md).
 
 This folder is self-contained. It reads the app (`../frontend`, `../backend`) but never writes to it.
@@ -20,8 +20,8 @@ Each scene is also its own composition (`scene-cold-open`, `scene-live-call`, �
 
 ## How it stays true to the app
 
-- **Real screens:** Home, Verify, Caller codes, Practice, Progress and the Analysts board are
-  screenshots of the running app, captured by `scripts/capture.mjs` (Chrome, reduced motion on so
+- **Real screens:** Home, Verify, Caller codes, Practice, Progress and Employee Analytics are
+  screenshots of the running app (the analytics dashboard is captured full-page and scrolled in the video), captured by `scripts/capture.mjs` (Chrome, reduced motion on so
   every frame is settled).
 - **Rebuilt screens:** the incoming call, briefing, live call, "This was a fake call." and results
   screens are re-created from the app's own markup and Tailwind classes (`src/ui/app.tsx` notes the
@@ -32,7 +32,7 @@ Each scene is also its own composition (`scene-cold-open`, `scene-live-call`, �
 - **Real AI output:** the caller's lines in the call scene come from a real Gemini practice call saved
   by the backend. The 🚩 taps are added to show the feature; the score (6, Low risk) is what the app's
   rubric gives for that outcome.
-- **Honest labels:** caller codes are marked as demo-only (no texts are sent), and the Analysts board
+- **Honest labels:** caller codes are marked as demo-only (no texts are sent), and Employee Analytics
   as illustrative data, as the app itself says.
 
 No API keys, `.env` values or personal data are used or embedded.

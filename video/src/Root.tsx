@@ -18,7 +18,7 @@ export const SCENES: { id: string; frames: number; C: () => React.JSX.Element }[
   { id: "live-call", frames: 660, C: LiveCall },
   { id: "call-over", frames: 135, C: CallOverScene },
   { id: "debrief", frames: 285, C: Debrief },
-  { id: "insight", frames: 195, C: Insight },
+  { id: "insight", frames: 315, C: Insight },
   { id: "close", frames: 225, C: Close },
 ];
 const T = 15; // cross-dissolve length
