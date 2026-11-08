@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import type { RecordingClip, TranscriptEntry } from '../types';
 import { createScriptedVoiceSession, type VoiceSession } from '../voice/voiceSession';
@@ -35,9 +35,18 @@ export function useCallPlayback(
 
   useEffect(() => () => voice.stop(), [voice]);
 
+  // Each server response is a new array. Key playback on the current entry's id,
+  // so a response that doesn't add lines can't restart the line in progress.
+  const transcriptRef = useRef(transcript);
   useEffect(() => {
-    if (played >= transcript.length) return;
-    const entry = transcript[played];
+    transcriptRef.current = transcript;
+  });
+  const currentId = played < transcript.length ? transcript[played].id : undefined;
+
+  useEffect(() => {
+    if (!currentId) return;
+    const entry = transcriptRef.current.find((e) => e.id === currentId);
+    if (!entry) return;
     const advance = () => {
       setSpeakingId(undefined);
       setPlayed((p) => p + 1);
@@ -61,7 +70,7 @@ export function useCallPlayback(
     }
     advance();
     return undefined;
-  }, [played, transcript, voice, recordings, callerVoice]);
+  }, [currentId, voice, recordings, callerVoice]);
 
   // A caller line becomes visible when it starts playing.
   const visibleCount = useMemo(() => {

@@ -15,6 +15,8 @@ export default function IncomingCall() {
   const session = useSimulatorStore((s) => s.session);
   const answer = useSimulatorStore((s) => s.answer);
   const decline = useSimulatorStore((s) => s.decline);
+  const pending = useSimulatorStore((s) => s.pending);
+  const error = useSimulatorStore((s) => s.error);
   const reducedMotion = useReducedMotion();
   const [pulse] = useState(() => new Animated.Value(0));
   // Checked once on mount, so answering or declining doesn't trigger the redirect mid-navigation.
@@ -38,13 +40,12 @@ export default function IncomingCall() {
     return <Redirect href="/simulator" />;
   }
 
-  const onAnswer = () => {
-    answer();
-    router.replace('/simulator/call');
+  // The first caller line may be written by the model, so answering can take a moment.
+  const onAnswer = async () => {
+    if (await answer()) router.replace('/simulator/call');
   };
-  const onDecline = () => {
-    decline();
-    router.replace('/simulator/debrief');
+  const onDecline = async () => {
+    if (await decline()) router.replace('/simulator/debrief');
   };
 
   return (
@@ -54,8 +55,9 @@ export default function IncomingCall() {
 
       <View style={styles.center}>
         <Text style={styles.ringing} accessibilityLiveRegion="polite">
-          Simulated incoming call…
+          {pending ? 'Connecting…' : 'Simulated incoming call…'}
         </Text>
+        {error ? <Text style={styles.error}>{error}</Text> : null}
         <View style={styles.pulseWrap}>
           {!reducedMotion && (
             <Animated.View
@@ -106,6 +108,7 @@ const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.callBg, paddingTop: spacing.md },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: spacing.xl },
   ringing: { color: colors.callTextMuted, fontSize: 17 },
+  error: { color: '#FF8A80', fontSize: 15, textAlign: 'center', paddingHorizontal: spacing.xl },
   pulseWrap: { alignItems: 'center', justifyContent: 'flex-start' },
   pulse: {
     position: 'absolute',

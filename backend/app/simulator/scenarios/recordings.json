@@ -1,0 +1,74 @@
+[
+  {
+    "id": "amz-1112259",
+    "pool": "amazon_order",
+    "transcript": "We would like to inform you that there is an order placed for Apple iPhone 11 Pro using your Amazon account. If you do not authorize this order, press 1 or press 2 to authorize this order.",
+    "durationSec": 11.4,
+    "datasetFile": "audio-wav-16khz/1112259_normalized.wav",
+    "ftcLetter": "pdf_files/pointofnoentry-every1telecomceasedesistletterfinaljms.pdf"
+  },
+  {
+    "id": "amz-daniel",
+    "pool": "amazon_order",
+    "transcript": "Hi, this is Daniel from Amazon customer service. We have seen a recent order number, AMZ0987, of iPhone 11 Pro on your account, which is billed on your card attached to your Amazon account. The amount charged in $1499. We noticed some suspicious activity on your account. So we have put in hold to this transaction. Please press 1 now. And to report please press 2. Thank you.",
+    "durationSec": 26.3,
+    "datasetFile": "audio-wav-16khz/1638881759.18243_in_Family_Communication_Robocall__Amazon-SuspiciousCharge_normalized.wav",
+    "ftcLetter": "pdf_files/pointofnoentry-familycommcdletter.pdf"
+  },
+  {
+    "id": "amz-1211775",
+    "pool": "amazon_order",
+    "transcript": "Hello, this call is from Amazon. We have gone through your account, and we found that your Amazon account has been used for shopping purpose, as we can see multiple orders placed from your Amazon account. Now, to confirm your order, press 2, or press 1 to talk to our representative.",
+    "durationSec": 20.9,
+    "datasetFile": "audio-wav-16khz/1211775_normalized.wav",
+    "ftcLetter": "pdf_files/pointofnoentry-businesstelecomceasedesistletterfinaljms.pdf"
+  },
+  {
+    "id": "amz-795470",
+    "pool": "amazon_order",
+    "transcript": "Hello, this is Amazon. This call is to authorize a payment of $999. We would like to inform you that there is an order placed for App iPhone 11 Pro using your Amazon account. If you do not authorize this order, press 1 or press 2 to authorize this order.",
+    "durationSec": 17.5,
+    "datasetFile": "audio-wav-16khz/795470_normalized.wav",
+    "ftcLetter": "pdf_files/pointofnoentry-akamgtcdletter.pdf"
+  },
+  {
+    "id": "amz-668376",
+    "pool": "amazon_order",
+    "transcript": "Dear customer, this is Marni from Amazon. We have noticed some fraudulent activities on your Amazon account regarding some unauthorized charge of $1,500 from unknown IP address coming from Albany, New York. Kindly press 1 to talk to our Amazon security department. Thank you.",
+    "durationSec": 22.4,
+    "datasetFile": "audio-wav-16khz/668376_normalized.wav",
+    "ftcLetter": "pdf_files/pointofnoentry-oneeyecdletter.pdf"
+  },
+  {
+    "id": "ssa-638881",
+    "pool": "ssa_suspension",
+    "transcript": "This call is from Department of Social Security Administration. The reason you have received this phone call from our department is to inform you that we just suspend your social security number because we found some suspicious activity. So if you want to know about this case, just press 1. Thank you.",
+    "durationSec": 20.0,
+    "datasetFile": "audio-wav-16khz/638881_normalized.wav",
+    "ftcLetter": "pdf_files/pointofnoentry-hfaservsceasedesistletterfinaljms.pdf"
+  },
+  {
+    "id": "ssa-509601",
+    "pool": "ssa_suspension",
+    "transcript": "We are calling you from the Department of Social Security Administration. The reason you received this phone call from our department is to inform you that there is a legal enforcement action filed on your Social Security number for fraudulent activities. So, when you get this message, kindly press 1 to connect with the next available officer. Thank you.",
+    "durationSec": 23.5,
+    "datasetFile": "audio-wav-16khz/509601_normalized.wav",
+    "ftcLetter": "pdf_files/pointofnoentry-whisltelecomwarningletter_1.pdf"
+  },
+  {
+    "id": "ssa-241125",
+    "pool": "ssa_suspension",
+    "transcript": "This message is intended to contact you, regarding a legal enforcement action executed under your social security number for suspicious and fraudulent activities committed in the state of Texas. And we just suspended your social security number. Ignoring this will be an intentional second attempt, to avoid initial appearance before magistrate, judge, or grand jury for a federal criminal offense, this is the final attempt to reach you, so if you want to know about this case just press 1.",
+    "durationSec": 30.8,
+    "datasetFile": "audio-wav-16khz/241125_normalized.wav",
+    "ftcLetter": "pdf_files/pointofnoentry-inteliquentwarningletter.pdf"
+  },
+  {
+    "id": "ssa-576026",
+    "pool": "ssa_suspension",
+    "transcript": "My name is officer Amanda Barnes and the purpose of the call, we are trying to reach you to let you know that your social security number has been used for some kind of fraudulent activities in the south border of Texas. So please in order go ahead, get more information to speak with officer press one. I repeat press one. Thank you and have a great day.",
+    "durationSec": 25.5,
+    "datasetFile": "audio-wav-16khz/576026_normalized.wav",
+    "ftcLetter": "pdf_files/pointofnoentry-greatchoicecdletter_0.pdf"
+  }
+]

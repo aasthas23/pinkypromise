@@ -16,6 +16,7 @@ Usage (needs ffmpeg/ffprobe on PATH):
 Downloads land in the cache dir. Outputs:
     assets/robocalls/<id>.m4a
     src/features/simulator/recordings/catalog.ts   (generated, do not edit)
+    ../backend/app/simulator/scenarios/recordings.json  (same metadata, no audio)
 """
 import argparse
 import csv
@@ -31,6 +32,7 @@ REPO = 'https://raw.githubusercontent.com/wspr-ncsu/robocall-audio-dataset/main/
 FRONTEND = Path(__file__).resolve().parents[2]
 ASSET_DIR = FRONTEND / 'assets' / 'robocalls'
 CATALOG = FRONTEND / 'src' / 'features' / 'simulator' / 'recordings' / 'catalog.ts'
+BACKEND_CATALOG = FRONTEND.parent / 'backend' / 'app' / 'simulator' / 'scenarios' / 'recordings.json'
 
 # id -> (pool, dataset file stem). Picked by hand: complete openers, no callback
 # numbers, and audio length consistent with the transcript.
@@ -141,6 +143,8 @@ def main():
     CATALOG.parent.mkdir(parents=True, exist_ok=True)
     CATALOG.write_text('\n'.join(lines), encoding='utf-8')
     print(f'wrote {CATALOG.relative_to(FRONTEND)}')
+    BACKEND_CATALOG.write_text(json.dumps(entries, indent=2, ensure_ascii=False) + '\n', encoding='utf-8')
+    print(f'wrote {BACKEND_CATALOG.relative_to(FRONTEND.parent)}')
 
 
 if __name__ == '__main__':

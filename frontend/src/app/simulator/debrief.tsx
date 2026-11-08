@@ -1,12 +1,12 @@
 import { Redirect, router } from 'expo-router';
-import { type ReactNode, useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { type ReactNode, useCallback, useEffect, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Button } from '@/components/Button';
 import { DebriefTimeline } from '@/components/simulator/DebriefTimeline';
-import { buildDebrief, compareAttempts } from '@/features/simulator/engine/debrief';
+import { ApiError, simulatorApi } from '@/features/simulator/api';
 import { useSimulatorStore } from '@/features/simulator/store';
-import type { Outcome } from '@/features/simulator/types';
+import type { Debrief, Outcome } from '@/features/simulator/types';
 import { colors, radius, spacing } from '@/theme';
 
 const OUTCOME_STYLE: Record<Outcome, { label: string; fg: string; bg: string }> = {
@@ -24,32 +24,56 @@ function formatDuration(ms: number) {
 export default function DebriefScreen() {
   // Snapshot on mount: "Try again" starts a new session, and this screen should
   // keep showing the finished one (not redirect) while navigation happens.
-  const [{ scenario, session, previous }] = useState(() => {
-    const { scenario, session, history } = useSimulatorStore.getState();
-    const earlier = history.filter(
-      (h) => h.scenarioId === session?.scenarioId && h.sessionId !== session?.sessionId,
-    );
-    return { scenario, session, previous: earlier[earlier.length - 1] };
+  const [{ scenario, session, previousSessionId }] = useState(() => {
+    const { scenario, session, previousSessionId } = useSimulatorStore.getState();
+    return { scenario, session, previousSessionId };
   });
   const start = useSimulatorStore((s) => s.start);
+  const [debrief, setDebrief] = useState<Debrief>();
+  const [error, setError] = useState<string>();
 
-  const debrief = useMemo(
-    () => (scenario && session?.status === 'ended' ? buildDebrief(scenario, session) : undefined),
-    [scenario, session],
-  );
-  const diffs = useMemo(
-    () => (scenario && session && previous ? compareAttempts(scenario, previous, session) : []),
-    [scenario, session, previous],
-  );
+  const fetchDebrief = useCallback(() => {
+    if (!session) return Promise.resolve();
+    return simulatorApi.debrief(session.sessionId, previousSessionId).then(
+      (d) => setDebrief(d),
+      (e) => setError(e instanceof ApiError ? e.message : 'Couldn’t load your debrief.'),
+    );
+  }, [session, previousSessionId]);
 
-  if (!scenario || !session || !debrief) return <Redirect href="/simulator" />;
+  useEffect(() => {
+    fetchDebrief();
+  }, [fetchDebrief]);
+
+  const load = () => {
+    setError(undefined);
+    fetchDebrief();
+  };
+
+  if (!scenario || !session) return <Redirect href="/simulator" />;
+
+  const retry = async () => {
+    if (await start(scenario.id)) router.replace('/simulator/incoming');
+  };
+
+  if (!debrief) {
+    return (
+      <View style={[styles.screen, styles.center]}>
+        {error ? (
+          <View style={styles.actions}>
+            <Text style={styles.body}>{error}</Text>
+            <Button label="Try again" onPress={load} />
+            <Button label="Back to scenarios" variant="secondary" onPress={() => router.dismissTo('/simulator')} />
+          </View>
+        ) : (
+          <ActivityIndicator color={colors.accent} accessibilityLabel="Loading your debrief" />
+        )}
+      </View>
+    );
+  }
 
   const o = OUTCOME_STYLE[debrief.outcome];
   const k = debrief.keyBehaviors;
-
-  const retry = () => {
-    if (start(scenario.id)) router.replace('/simulator/incoming');
-  };
+  const diffs = debrief.comparison;
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -128,6 +152,11 @@ export default function DebriefScreen() {
       {debrief.provenance ? (
         <Section title="About this call">
           <Text style={styles.caption}>{debrief.provenance}</Text>
+          {debrief.usedModel ? (
+            <Text style={styles.caption}>
+              The live caller’s wording was written by Claude for this call, within the scenario’s fixed steps. Your choices were scored by the scenario’s rules, not by the AI.
+            </Text>
+          ) : null}
           {debrief.recording ? (
             <Text style={styles.caption}>
               Recording: {debrief.recording.datasetFile.split('/').pop()} from the Robocall Audio Dataset (Prasad and Reaves, NC State, 2023), public domain.
@@ -157,6 +186,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
+  center: { alignItems: 'center', justifyContent: 'center', padding: spacing.xl },
   content: { padding: spacing.lg, gap: spacing.xl, paddingBottom: spacing.xxl },
   hero: { borderRadius: radius.lg, padding: spacing.lg, gap: spacing.sm },
   pill: {

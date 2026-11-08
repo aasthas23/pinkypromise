@@ -1,6 +1,6 @@
 import { StyleSheet, Text, View } from 'react-native';
 
-import type { TimelineItem, TimelineKind } from '@/features/simulator/engine/debrief';
+import type { TimelineItem, TimelineKind } from '@/features/simulator/types';
 import { colors, radius, spacing } from '@/theme';
 
 const KIND_STYLE: Record<TimelineKind, { fg: string; bg: string; tag: string }> = {

@@ -1,91 +1,138 @@
 import { create } from 'zustand';
 
-import {
-  answerCall,
-  chooseResponse,
-  createSession,
-  type ClipPicker,
-  declineCall,
-  hangUp,
-  requestHint,
-} from './engine/scenarioMachine';
-import { getScenario } from './scenarios';
-import type { Scenario, SimulatorSession } from './types';
+import { ApiError, simulatorApi } from './api';
+import type { ScenarioSummary, SessionView, SimulatorStatus } from './types';
 
 /**
- * Shared simulator state across the scenario, incoming, call and debrief screens.
- * Sessions live only in memory. Nothing is persisted or sent anywhere, and
- * closing the app clears history.
+ * Client state for the simulator. The backend is the source of truth for the
+ * call; this store only holds the latest view of it plus UI concerns.
  */
 type SimulatorState = {
-  scenario?: Scenario;
-  session?: SimulatorSession;
-  /** Completed sessions this app run, newest last, used for retry comparisons. */
-  history: SimulatorSession[];
+  scenarios?: ScenarioSummary[];
+  status?: SimulatorStatus;
+  loadError?: string;
+
+  scenario?: ScenarioSummary;
+  session?: SessionView;
+  /** The finished attempt before this one (same scenario), for the debrief comparison. */
+  previousSessionId?: string;
+  /** True while waiting for the backend (e.g. the caller is "thinking"). */
+  pending: boolean;
+  error?: string;
   activeHint?: string;
   voiceEnabled: boolean;
+  /** Last finished session per scenario, for retry comparisons and fresh recordings. */
+  lastEnded: Record<string, string>;
+  attempts: number;
 
-  start: (scenarioId: string) => boolean;
-  answer: () => void;
-  decline: () => void;
-  choose: (optionId: string) => void;
-  hangUp: () => void;
-  requestHint: () => void;
+  loadScenarios: () => Promise<void>;
+  start: (scenarioId: string) => Promise<boolean>;
+  answer: () => Promise<boolean>;
+  decline: () => Promise<boolean>;
+  choose: (optionId: string) => Promise<void>;
+  say: (text: string) => Promise<boolean>;
+  hangUp: () => Promise<void>;
+  requestHint: () => Promise<void>;
   dismissHint: () => void;
+  clearError: () => void;
   setVoiceEnabled: (enabled: boolean) => void;
-  clearHistory: () => void;
 };
 
+const message = (e: unknown) => (e instanceof ApiError ? e.message : 'Something went wrong.');
+
 export const useSimulatorStore = create<SimulatorState>((set, get) => {
-  /** Applies an engine transition and archives the session once it ends. */
-  const apply = (fn: (scenario: Scenario, session: SimulatorSession) => SimulatorSession) => {
-    const { scenario, session, history } = get();
-    if (!scenario || !session) return;
-    const next = fn(scenario, session);
-    if (next === session) return;
-    const justEnded = session.status !== 'ended' && next.status === 'ended';
+  const setSession = (session: SessionView) => {
+    const { lastEnded, attempts, session: prev } = get();
+    const justEnded = session.status === 'ended' && prev?.status !== 'ended';
     set({
-      session: next,
+      session,
       activeHint: undefined,
-      history: justEnded ? [...history, next] : history,
+      lastEnded: justEnded ? { ...lastEnded, [session.scenarioId]: session.sessionId } : lastEnded,
+      attempts: justEnded ? attempts + 1 : attempts,
     });
   };
 
-  return {
-    history: [],
-    voiceEnabled: true,
-
-    start: (scenarioId) => {
-      const scenario = getScenario(scenarioId);
-      if (!scenario) return false;
-      // Retries hear a different real recording than last time, when there is one.
-      const last = [...get().history].reverse().find((h) => h.scenarioId === scenarioId);
-      const pick: ClipPicker = (clips, pool) => {
-        const fresh = clips.filter((c) => c.id !== last?.recordingIds[pool]);
-        const candidates = fresh.length ? fresh : clips;
-        return candidates[Math.floor(Math.random() * candidates.length)];
-      };
-      const now = Date.now();
-      set({
-        scenario,
-        session: createSession(scenario, now, `s${now}`, pick),
-        activeHint: undefined,
-      });
+  /** Runs one call action; returns false (and records the error) on failure. */
+  const act = async (fn: (id: string) => Promise<SessionView>): Promise<boolean> => {
+    const { session, pending } = get();
+    if (!session || pending) return false;
+    set({ pending: true, error: undefined });
+    try {
+      setSession(await fn(session.sessionId));
       return true;
+    } catch (e) {
+      set({ error: message(e) });
+      return false;
+    } finally {
+      set({ pending: false });
+    }
+  };
+
+  return {
+    pending: false,
+    voiceEnabled: true,
+    lastEnded: {},
+    attempts: 0,
+
+    loadScenarios: async () => {
+      set({ loadError: undefined });
+      try {
+        const [scenarios, status] = await Promise.all([simulatorApi.scenarios(), simulatorApi.status()]);
+        set({ scenarios, status });
+      } catch (e) {
+        set({ loadError: message(e) });
+      }
     },
-    answer: () => apply((sc, s) => answerCall(sc, s, Date.now())),
-    decline: () => apply((sc, s) => declineCall(sc, s, Date.now())),
-    choose: (optionId) => apply((sc, s) => chooseResponse(sc, s, optionId, Date.now())),
-    hangUp: () => apply((sc, s) => hangUp(sc, s, Date.now())),
-    requestHint: () => {
-      const { scenario, session } = get();
-      if (!scenario || !session) return;
-      const result = requestHint(scenario, session, Date.now());
-      if (result.hint) set({ session: result.session, activeHint: result.hint });
+
+    start: async (scenarioId) => {
+      const scenario = get().scenarios?.find((s) => s.id === scenarioId);
+      if (!scenario || get().pending) return false;
+      set({ pending: true, error: undefined });
+      try {
+        const previousSessionId = get().lastEnded[scenarioId];
+        const session = await simulatorApi.start(scenarioId, previousSessionId);
+        set({ scenario, session, previousSessionId, activeHint: undefined });
+        return true;
+      } catch (e) {
+        set({ error: message(e) });
+        return false;
+      } finally {
+        set({ pending: false });
+      }
     },
+
+    answer: () => act(simulatorApi.answer),
+    decline: () => act(simulatorApi.decline),
+    choose: async (optionId) => {
+      await act((id) => simulatorApi.choose(id, optionId));
+    },
+    say: (text) => act((id) => simulatorApi.say(id, text)),
+
+    // Hang up must always work: it doesn't wait for pending actions, and the
+    // screen leaves the call even if the request fails.
+    hangUp: async () => {
+      const { session } = get();
+      if (!session || session.status !== 'active') return;
+      try {
+        setSession(await simulatorApi.hangUp(session.sessionId));
+      } catch (e) {
+        set({ error: message(e) });
+      }
+    },
+
+    requestHint: async () => {
+      const { session, pending } = get();
+      if (!session || pending) return;
+      try {
+        const res = await simulatorApi.hint(session.sessionId);
+        set({ session: res.session, activeHint: res.hint ?? undefined });
+      } catch (e) {
+        set({ error: message(e) });
+      }
+    },
+
     dismissHint: () => set({ activeHint: undefined }),
+    clearError: () => set({ error: undefined }),
     setVoiceEnabled: (voiceEnabled) => set({ voiceEnabled }),
-    clearHistory: () => set({ history: [] }),
   };
 });
-

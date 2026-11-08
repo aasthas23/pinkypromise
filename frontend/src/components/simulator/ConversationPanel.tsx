@@ -9,15 +9,17 @@ type Props = {
   callerName: string;
   /** Id of the line currently being spoken, if any. */
   speakingId?: string;
+  /** Waiting for the caller's next line. */
+  typing?: boolean;
 };
 
 /** Live captions for the call. Always shown so audio is never required. */
-export function ConversationPanel({ entries, callerName, speakingId }: Props) {
+export function ConversationPanel({ entries, callerName, speakingId, typing }: Props) {
   const scrollRef = useRef<ComponentRef<typeof ScrollView>>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollToEnd({ animated: true });
-  }, [entries.length]);
+  }, [entries.length, typing]);
 
   return (
     <ScrollView
@@ -67,6 +69,12 @@ export function ConversationPanel({ entries, callerName, speakingId }: Props) {
           </View>
         );
       })}
+      {typing ? (
+        <View style={[styles.bubble, styles.caller]} accessible accessibilityLabel={`${callerName} is responding`}>
+          <Text style={styles.speaker}>{callerName}</Text>
+          <Text style={styles.callerText}>…</Text>
+        </View>
+      ) : null}
     </ScrollView>
   );
 }

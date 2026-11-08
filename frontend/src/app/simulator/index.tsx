@@ -1,20 +1,32 @@
 import { router } from 'expo-router';
-import { ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { useEffect } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 
 import { Button } from '@/components/Button';
-import { scenarios } from '@/features/simulator/scenarios';
+import { API_BASE_URL } from '@/features/simulator/api';
 import { useSimulatorStore } from '@/features/simulator/store';
 import { colors, radius, spacing } from '@/theme';
 
 export default function ScenarioSelect() {
+  const scenarios = useSimulatorStore((s) => s.scenarios);
+  const status = useSimulatorStore((s) => s.status);
+  const loadError = useSimulatorStore((s) => s.loadError);
+  const loadScenarios = useSimulatorStore((s) => s.loadScenarios);
   const start = useSimulatorStore((s) => s.start);
+  const pending = useSimulatorStore((s) => s.pending);
+  const error = useSimulatorStore((s) => s.error);
   const voiceEnabled = useSimulatorStore((s) => s.voiceEnabled);
   const setVoiceEnabled = useSimulatorStore((s) => s.setVoiceEnabled);
-  const attempts = useSimulatorStore((s) => s.history.length);
+  const attempts = useSimulatorStore((s) => s.attempts);
 
-  const begin = (id: string) => {
-    if (start(id)) router.push('/simulator/incoming');
+  useEffect(() => {
+    if (!useSimulatorStore.getState().scenarios) loadScenarios();
+  }, [loadScenarios]);
+
+  const begin = async (id: string) => {
+    if (await start(id)) router.push('/simulator/incoming');
   };
+  const aiOn = status?.dialogue === 'model';
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -28,13 +40,31 @@ export default function ScenarioSelect() {
       <View style={styles.notice} accessible accessibilityLabel="About these practice calls">
         <Text style={styles.noticeTitle}>🛡️ These calls are simulated</Text>
         <Text style={styles.noticeBody}>
-          Nothing here is a real call, and nothing affects your real phone or account. You respond by tapping scripted answers, so you never type real personal information. Your answers stay on this device and are cleared when you close the app.
+          Nothing here is a real call, and nothing affects your real phone or account. Never type real personal information. Any number or email you type is removed before it’s used, and calls aren’t saved.
         </Text>
+        {status ? (
+          <Text style={styles.noticeBody}>
+            {aiOn
+              ? '🤖 AI caller is on: the caller’s lines are written by Claude, and what you type is sent to Anthropic’s API to understand your reply.'
+              : '📄 AI caller is off: the caller follows a script, and you respond with suggested replies.'}
+          </Text>
+        ) : null}
       </View>
 
-      {scenarios.map((sc) => (
+      {!scenarios && !loadError ? <ActivityIndicator color={colors.accent} accessibilityLabel="Loading scenarios" /> : null}
+      {loadError ? (
+        <View style={styles.errorBox} accessibilityLiveRegion="polite">
+          <Text style={styles.errorTitle}>Couldn’t load practice calls</Text>
+          <Text style={styles.body}>{loadError}</Text>
+          <Text style={styles.voiceHint}>Is the backend running? It’s expected at {API_BASE_URL}.</Text>
+          <Button label="Try again" variant="secondary" onPress={loadScenarios} />
+        </View>
+      ) : null}
+      {error ? <Text style={styles.errorInline}>{error}</Text> : null}
+
+      {(scenarios ?? []).map((sc) => (
         <View key={sc.id} style={styles.card}>
-          {sc.recordings?.length ? (
+          {sc.hasRecording ? (
             <Text style={styles.realTag}>📼 Real robocall recording</Text>
           ) : null}
           <Text style={styles.cardTitle}>{sc.title}</Text>
@@ -62,7 +92,7 @@ export default function ScenarioSelect() {
             />
           </View>
           <Button
-            label="Start practice call"
+            label={pending ? 'Connecting…' : 'Start practice call'}
             onPress={() => begin(sc.id)}
             accessibilityHint="Shows a simulated incoming call"
           />
@@ -125,5 +155,13 @@ const styles = StyleSheet.create({
   },
   voiceLabel: { fontSize: 16, fontWeight: '600', color: colors.text },
   voiceHint: { fontSize: 13, color: colors.textMuted },
+  errorBox: {
+    backgroundColor: colors.riskySoft,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    gap: spacing.sm,
+  },
+  errorTitle: { fontSize: 16, fontWeight: '700', color: colors.risky },
+  errorInline: { fontSize: 14, color: colors.risky },
   footer: { fontSize: 13, lineHeight: 19, color: colors.textMuted, textAlign: 'center' },
 });
